@@ -50,6 +50,7 @@
 
     <!-- Grabar audio (WebView getUserMedia lo necesita también a nivel Android) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- Tomar fotos con la cámara del sistema desde el <input capture> -->
     <uses-permission android:name="android.permission.CAMERA" />
