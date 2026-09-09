@@ -1,0 +1,2879 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#20304D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Apuntes U">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Apuntes U</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#1B2536;
+    --ink-soft:#4B566B;
+    --paper:#F3F1EC;
+    --paper-raised:#FFFFFF;
+    --line:#DAD6CC;
+    --navy:#20304D;
+    --navy-deep:#151F33;
+    --accent:#C6577A;
+    --shadow: 0 2px 10px rgba(27,37,54,0.06);
+    --shadow-lg: 0 12px 32px rgba(27,37,54,0.18);
+    --radius: 14px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--paper),var(--paper)) fixed;
+    background-color:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    overscroll-behavior-y:none;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* Textura de papel rayado. Antes era una capa fija sobre todo el viewport, lo que
+     obligaba a repintar la pantalla entera en cada frame del scroll. Ahora va como
+     fondo del contenedor y el navegador la puede componer sin repintar. */
+  #app{
+    position:relative; z-index:1; max-width:560px; margin:0 auto; min-height:100vh;
+    display:flex; flex-direction:column;
+    background-image: repeating-linear-gradient(to bottom, transparent, transparent 35px, rgba(27,37,54,0.035) 35px, rgba(27,37,54,0.035) 36px);
+  }
+
+  .display{font-family:'Fraunces',serif; font-optical-sizing:auto;}
+  .mono{font-family:'IBM Plex Mono',monospace; letter-spacing:0.01em;}
+
+  /* ---------- top bar ---------- */
+  header.topbar{
+    padding: calc(18px + var(--safe-top)) 20px 16px;
+    display:flex; align-items:center; gap:12px;
+    background:var(--navy);
+    color:#fff;
+    position:relative; z-index:20;
+    box-shadow: var(--shadow);
+    flex-shrink:0;
+  }
+  header.topbar h1{
+    font-size:22px; margin:0; font-weight:600;
+  }
+  header.topbar .sub{
+    font-size:11.5px; opacity:0.65; margin-top:2px;
+  }
+  .icon-btn{
+    width:38px; height:38px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,0.12); border:none; color:#fff; cursor:pointer;
+    flex-shrink:0;
+  }
+  .icon-btn:active{ background:rgba(255,255,255,0.24); }
+  .icon-btn svg{width:19px; height:19px;}
+
+  /* ---------- screens ---------- */
+  #screensWrap{ position:relative; flex:1; overflow:hidden; }
+  .screen{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    padding-bottom:110px; overflow-y:auto; background:var(--paper);
+    transform:translateX(100%); transition:transform .34s cubic-bezier(.4,0,.2,1); z-index:1;
+  }
+  .screen.active{ transform:translateX(0); z-index:2; }
+  #screen-courses{ transform:translateX(0); }
+
+  /* ---------- courses list ---------- */
+  #courseList{ padding:18px 16px 8px; display:flex; flex-direction:column; gap:12px; }
+  .course-card{
+    background:var(--paper-raised);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    display:flex; align-items:stretch; overflow:hidden;
+    cursor:pointer; border:1px solid var(--line);
+    position:relative;
+  }
+  .course-card .tab{ width:9px; flex-shrink:0; }
+  .course-card .body{ padding:15px 16px; flex:1; min-width:0; }
+  .course-card .name{ font-family:'Fraunces',serif; font-weight:600; font-size:18.5px; margin:0 0 4px; color:var(--ink); }
+  .course-card .meta{ font-size:12px; color:var(--ink-soft); display:flex; gap:10px; align-items:center;}
+  .course-card .meta .dot{width:3px;height:3px;border-radius:50%;background:var(--ink-soft);}
+  .empty-state{
+    text-align:center; padding:60px 30px 20px; color:var(--ink-soft);
+  }
+  .empty-state .glyph{font-size:40px; margin-bottom:14px; opacity:0.6;}
+  .empty-state h3{font-family:'Fraunces',serif; color:var(--ink); font-size:19px; margin:0 0 6px;}
+  .empty-state p{font-size:13.5px; line-height:1.5; margin:0;}
+
+  /* ---------- course detail ---------- */
+  .filters{
+    display:flex; gap:8px; padding:14px 16px 4px; overflow-x:auto;
+    position:sticky; top:0; z-index:5; background:var(--paper); flex-shrink:0;
+  }
+  .chip{
+    font-family:'Inter'; font-size:12.5px; font-weight:600; padding:7px 14px;
+    border-radius:100px; border:1px solid var(--line); background:var(--paper-raised);
+    color:var(--ink-soft); white-space:nowrap; cursor:pointer;
+  }
+  .chip.active{ background:var(--navy); color:#fff; border-color:var(--navy); }
+
+  .timeline{ padding:8px 16px 20px; position:relative; }
+  .day-group{ margin-top:22px; }
+  .day-label{
+    font-size:11px; font-weight:600; color:var(--ink-soft); letter-spacing:0.06em;
+    margin-bottom:10px; padding-left:20px; position:relative;
+  }
+  .day-label::before{
+    content:""; position:absolute; left:6px; top:3px; width:6px; height:6px; border-radius:50%;
+    background:var(--accent);
+  }
+  .rail{ border-left:2px dotted var(--line); margin-left:9px; padding-left:19px; display:flex; flex-direction:column; gap:10px;}
+
+  .entry{
+    content-visibility:auto; contain-intrinsic-size:auto 96px;
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; display:flex; gap:12px; align-items:flex-start; cursor:pointer;
+    box-shadow:var(--shadow);
+  }
+  .entry .eicon{
+    width:32px; height:32px; border-radius:9px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; background:var(--paper);
+    color:var(--navy);
+  }
+  .entry .eicon svg{width:16px;height:16px;}
+  .entry .econtent{ min-width:0; flex:1; }
+  .entry .etitle{ font-weight:600; font-size:14.5px; margin:0 0 3px; color:var(--ink); }
+  .entry .esnippet{ font-size:12.5px; color:var(--ink-soft); margin:0; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;}
+  .entry .etime{ font-size:10.5px; color:var(--ink-soft); margin-top:5px; opacity:0.8;}
+  .entry img.thumb{ width:100%; height:150px; max-height:150px; object-fit:cover; border-radius:8px; margin-top:6px; background:var(--line);}
+
+  /* ---------- FAB ---------- */
+  .fab-wrap{
+    position:fixed; left:0; right:0; bottom:0; z-index:30;
+    display:flex; justify-content:center; pointer-events:none;
+  }
+  .fab-inner{ max-width:560px; width:100%; display:flex; justify-content:flex-end; padding:0 20px calc(22px + var(--safe-bottom)); position:relative; pointer-events:none;}
+  .speed-options{
+    position:absolute; right:20px; bottom: calc(148px + var(--safe-bottom)); display:flex; flex-direction:column; gap:14px; align-items:flex-end;
+    opacity:0; transform:translateY(8px); pointer-events:none; transition:all .18s ease;
+  }
+  .speed-options.open{ opacity:1; transform:translateY(0); pointer-events:auto;}
+  .speed-opt{
+    display:flex; align-items:center; gap:10px; pointer-events:none;
+  }
+  .speed-options.open .speed-opt{ pointer-events:auto; }
+  .speed-opt .label{
+    background:var(--navy-deep); color:#fff; font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:8px;
+  }
+  .speed-opt button{
+    width:46px; height:46px; border-radius:50%; border:none; background:var(--paper-raised); color:var(--navy);
+    box-shadow:var(--shadow-lg); display:flex; align-items:center; justify-content:center;
+  }
+  .fab-main{
+    width:58px; height:58px; border-radius:50%; border:none; background:var(--accent); color:#fff;
+    box-shadow:var(--shadow-lg); display:flex; align-items:center; justify-content:center; pointer-events:auto;
+    transition:transform .18s ease;
+  }
+  .fab-main.open{ transform:rotate(45deg); }
+  .fab-main svg{ width:24px; height:24px; }
+
+  /* ---------- modal / sheet ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(20,26,38,0.5); z-index:50;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  .overlay.active{ display:flex; }
+  .sheet{
+    background:var(--paper); width:100%; max-width:560px; border-radius:20px 20px 0 0;
+    max-height:88vh; overflow-y:auto; padding:20px 20px calc(24px + var(--safe-bottom));
+    box-shadow:var(--shadow-lg); position:relative;
+    animation: rise .22s ease;
+  }
+  @keyframes rise{ from{ transform:translateY(24px); opacity:0;} to{transform:translateY(0); opacity:1;} }
+  .sheet-handle{ width:38px; height:4px; background:var(--line); border-radius:4px; margin:0 auto 16px; }
+  .sheet h2{ font-family:'Fraunces',serif; font-size:20px; margin:0 0 16px; color:var(--ink); }
+  .field{ margin-bottom:14px; }
+  .field label{ font-size:12px; font-weight:600; color:var(--ink-soft); display:block; margin-bottom:6px; }
+  .field input[type=text], .field textarea{
+    width:100%; border:1px solid var(--line); border-radius:10px; padding:11px 12px;
+    font-family:'Inter'; font-size:14.5px; background:var(--paper-raised); color:var(--ink);
+  }
+  .field textarea{ min-height:150px; resize:vertical; line-height:1.5; }
+  .field input:focus, .field textarea:focus{ outline:2px solid var(--navy); outline-offset:1px;}
+  .swatches{ display:flex; gap:10px; flex-wrap:wrap; }
+  .swatch{ width:34px; height:34px; border-radius:50%; border:3px solid transparent; cursor:pointer; }
+  .swatch.selected{ border-color:var(--ink); }
+  .btn{
+    width:100%; padding:13px; border-radius:12px; border:none; font-family:'Inter'; font-weight:600;
+    font-size:14.5px; cursor:pointer;
+  }
+  .btn-primary{ background:var(--navy); color:#fff; }
+  .btn-primary:disabled{ opacity:0.4; }
+  .btn-ghost{ background:transparent; color:var(--ink-soft); }
+  .btn-danger{ background:#fff; color:#B23B4E; border:1px solid #E7C4CC; }
+  .btn-row{ display:flex; gap:10px; margin-top:6px; }
+
+  /* recorder */
+  .rec-visual{ display:flex; flex-direction:column; align-items:center; padding:18px 0 8px; }
+  .rec-timer{ font-size:34px; font-weight:600; margin:14px 0 22px; color:var(--ink); }
+  .rec-bars{ display:flex; align-items:flex-end; gap:4px; height:44px; margin-bottom:22px; }
+  .rec-bars span{ width:4px; background:var(--accent); border-radius:2px; height:8px; }
+  .rec-bars.live span{ animation: bar 0.9s ease-in-out infinite; }
+  .rec-bars span:nth-child(1){animation-delay:0s;} .rec-bars span:nth-child(2){animation-delay:0.1s;}
+  .rec-bars span:nth-child(3){animation-delay:0.2s;} .rec-bars span:nth-child(4){animation-delay:0.3s;}
+  .rec-bars span:nth-child(5){animation-delay:0.4s;} .rec-bars span:nth-child(6){animation-delay:0.5s;}
+  .rec-bars span:nth-child(7){animation-delay:0.15s;} .rec-bars span:nth-child(8){animation-delay:0.35s;}
+  @keyframes bar{ 0%,100%{height:8px;} 50%{height:40px;} }
+  .rec-btn{
+    width:74px; height:74px; border-radius:50%; border:none; background:#B23B4E; color:#fff;
+    display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow-lg);
+  }
+  .rec-btn svg{ width:26px; height:26px; }
+  .rec-btn.recording{ background:var(--navy); }
+  audio{ width:100%; margin-top:10px; }
+
+  /* photo */
+  .photo-input-row{ display:flex; gap:10px; }
+  .photo-tile{
+    flex:1; border:1.5px dashed var(--line); border-radius:12px; padding:20px 10px; text-align:center;
+    background:var(--paper-raised); font-size:12.5px; font-weight:600; color:var(--ink-soft); cursor:pointer;
+  }
+  .photo-tile svg{ width:22px; height:22px; margin-bottom:6px; display:block; margin-left:auto; margin-right:auto; }
+  .photo-preview{ width:100%; border-radius:12px; margin-top:14px; max-height:280px; object-fit:cover; display:none; }
+
+  /* view sheet */
+  .view-body{ font-size:14.5px; line-height:1.6; white-space:pre-wrap; color:var(--ink); }
+  .view-img{ width:100%; border-radius:12px; }
+  .view-meta{ font-size:11.5px; color:var(--ink-soft); margin-bottom:14px; }
+
+  .hidden-input{ display:none; }
+
+  ::-webkit-scrollbar{ width:0; height:0; }
+
+  .onboard{
+    position:fixed; inset:0; background:var(--navy); color:#fff; z-index:100;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:40px;
+  }
+  .onboard h1{ font-family:'Fraunces',serif; font-size:30px; margin-bottom:10px; }
+  .onboard p{ font-size:14px; opacity:0.75; line-height:1.6; max-width:340px; margin-bottom:26px; }
+  .onboard .tip{ font-size:12px; opacity:0.6; margin-top:20px; max-width:300px; }
+  .onboard button{ background:var(--accent); color:#fff; border:none; padding:14px 30px; border-radius:100px; font-weight:600; font-size:14.5px;}
+
+  /* ---------- calendar ---------- */
+  .cal-header{ display:flex; align-items:center; justify-content:space-between; padding:16px 16px 4px; }
+  .cal-title{ font-size:19px; font-weight:600; }
+  .cal-grid{
+    display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:1px; background:var(--line);
+    border:1px solid var(--line); border-radius:12px; overflow:hidden; margin:10px 16px 20px;
+  }
+  .cal-dow{ background:var(--navy); color:#fff; text-align:center; font-size:10.5px; font-weight:600; padding:8px 0; }
+  .cal-cell{
+    background:var(--paper-raised); min-height:62px; padding:5px 4px; position:relative; cursor:pointer;
+    display:flex; flex-direction:column; gap:2px; min-width:0; overflow:hidden;
+  }
+  .cal-cell:active{ background:var(--paper); }
+  .cal-cell.other-month{ opacity:0.35; }
+  .cal-daynum{ font-size:12px; font-weight:600; color:var(--ink); }
+  .cal-daynum.today{
+    background:var(--navy); color:#fff; width:19px; height:19px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .cal-tag{
+    font-size:8.5px; font-weight:700; color:#fff; padding:2px 4px; border-radius:4px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; min-width:0;
+  }
+  .cal-more{ font-size:8.5px; color:var(--ink-soft); font-weight:600; }
+  .cal-hint{ padding:0 20px 10px; font-size:12.5px; color:var(--ink-soft); text-align:center; }
+
+  /* ---------- day view ---------- */
+  .day-course-badge{
+    display:inline-block; padding:4px 10px; border-radius:8px; color:#fff;
+    font-size:10.5px; font-weight:700; margin:16px 0 6px; cursor:pointer;
+  }
+
+  /* ---------- custom audio player ---------- */
+  .aplayer{ display:flex; flex-direction:column; gap:12px; margin-top:4px; }
+  .aplayer-row{ display:flex; align-items:center; gap:12px; }
+  .aplayer-playbtn{
+    width:44px; height:44px; border-radius:50%; background:var(--navy); color:#fff; border:none;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .aplayer-playbtn svg{ width:18px; height:18px; }
+  .aplayer-skipbtn{
+    width:38px; height:38px; border-radius:50%; background:var(--paper); color:var(--navy); border:1px solid var(--line);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; flex-shrink:0; gap:0; padding:0;
+  }
+  .aplayer-skipbtn svg{ width:15px; height:15px; }
+  .aplayer-skipbtn span{ font-size:8px; font-weight:700; line-height:1; margin-top:-1px; }
+  .aplayer-time{ font-size:12px; color:var(--ink-soft); }
+  .aplayer-bar{ position:relative; width:100%; height:8px; background:var(--line); border-radius:4px; cursor:pointer; }
+  .aplayer-fill{ position:absolute; left:0; top:0; height:100%; background:var(--navy); border-radius:4px; width:0%; pointer-events:none; }
+  .aplayer-mark{ position:absolute; top:-3px; height:14px; background:var(--accent); border-radius:3px; opacity:0.85; pointer-events:none; }
+  .marks-list{ display:flex; flex-direction:column; gap:6px; }
+  .mark-chip{
+    display:flex; justify-content:space-between; align-items:center; background:var(--paper-raised);
+    border:1px solid var(--line); border-radius:10px; padding:9px 13px; font-size:12.5px; cursor:pointer; font-weight:600;
+  }
+  .mark-chip .mtime{ font-family:'IBM Plex Mono'; color:var(--navy); }
+
+  /* ---------- recording marks ---------- */
+  .mark-row{ display:flex; justify-content:center; margin-bottom:12px; }
+  .mark-btn{
+    display:flex; align-items:center; gap:6px; padding:9px 18px; border-radius:100px;
+    border:1.5px solid var(--line); background:var(--paper-raised); font-weight:600; font-size:13px;
+    color:var(--ink); font-family:'Inter';
+  }
+  .mark-btn:disabled{ opacity:0.4; }
+  .mark-btn.active{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .marks-live{ display:flex; gap:6px; flex-wrap:wrap; justify-content:center; margin-bottom:14px; min-height:0; }
+  .mark-pill{
+    font-family:'IBM Plex Mono'; font-size:10.5px; background:var(--paper); border:1px solid var(--line);
+    padding:4px 8px; border-radius:8px; color:var(--ink-soft);
+  }
+  .rec-hint{ font-size:11px; color:var(--ink-soft); text-align:center; margin:-4px 0 14px; line-height:1.4; }
+  .aplayer-fill{ transform-origin:left center; will-change:transform; }
+  .aplayer-bar.fixing{ cursor:wait; }
+  .aplayer-fixing{
+    position:absolute; inset:0; border-radius:4px; opacity:0;
+    background:repeating-linear-gradient(45deg, rgba(27,37,54,0.08) 0 6px, transparent 6px 12px);
+    pointer-events:none; transition:opacity .15s ease;
+  }
+  .aplayer-bar.fixing .aplayer-fixing{ opacity:1; }
+  .aplayer-skipbtn.disabled, .aplayer-playbtn.disabled{ opacity:0.45; pointer-events:none; }
+  .rec-status{
+    font-size:12px; line-height:1.45; text-align:center;
+    background:rgba(63,124,110,0.10); color:#2E5C51;
+    border-radius:10px; padding:8px 10px; margin:10px 0 0;
+  }
+  .rec-status.warn{ background:rgba(198,87,122,0.12); color:#933753; }
+  .mic-row{
+    display:flex; align-items:center; gap:8px;
+    margin:10px 0 2px; padding:8px 10px;
+    background:var(--paper); border:1px solid var(--line); border-radius:10px;
+  }
+  .mic-row .mic-ico{ font-size:14px; }
+  .mic-row select{
+    flex:1; border:none; background:transparent; color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif; font-size:13px; font-weight:500;
+    outline:none; -webkit-appearance:none; appearance:none;
+  }
+  .au-toast{
+    position:fixed; left:50%; bottom:calc(24px + var(--safe-bottom));
+    transform:translate(-50%, 20px); opacity:0; pointer-events:none;
+    max-width:min(420px, calc(100vw - 32px));
+    background:var(--navy-deep); color:#fff;
+    font-size:13px; line-height:1.45; padding:11px 16px; border-radius:12px;
+    box-shadow:var(--shadow-lg); z-index:9999;
+    transition:opacity .22s ease, transform .22s ease;
+  }
+  .au-toast.show{ opacity:1; transform:translate(-50%, 0); }
+
+  /* ---------- fullscreen image viewer ---------- */
+  .img-viewer{
+    position:fixed; inset:0; background:#000; z-index:200; display:none; overflow:hidden; touch-action:none;
+  }
+  .img-viewer.active{ display:block; }
+  .img-viewer-stage{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center; touch-action:none;
+  }
+  .img-viewer-stage img{
+    max-width:100%; max-height:100%; touch-action:none; user-select:none; -webkit-user-drag:none;
+    transform-origin:center center; will-change:transform;
+  }
+  #imgViewerClose{
+    position:fixed; top:calc(14px + var(--safe-top)); right:14px; z-index:210;
+    background:rgba(255,255,255,0.15); color:#fff;
+  }
+  #imgViewerSave{
+    position:fixed; top:calc(14px + var(--safe-top)); right:64px; z-index:210;
+    background:rgba(255,255,255,0.15); color:#fff;
+  }
+
+  /* ---------- background recording badge ---------- */
+  .rec-badge{
+    position:fixed; top:calc(84px + var(--safe-top)); left:50%; transform:translateX(-50%);
+    background:#B23B4E; color:#fff; padding:9px 16px; border-radius:100px; display:flex; align-items:center; gap:9px;
+    font-size:12.5px; font-weight:600; box-shadow:var(--shadow-lg); z-index:45; cursor:pointer; white-space:nowrap;
+  }
+  .rec-badge-dot{ width:8px; height:8px; border-radius:50%; background:#fff; flex-shrink:0; animation: recblink 1.1s infinite; }
+  @keyframes recblink{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar" id="topbar">
+    <button class="icon-btn" id="backBtn" style="display:none;" onclick="goBack()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div style="flex:1; min-width:0;">
+      <h1 id="topTitle" class="display">Apuntes U</h1>
+      <div class="sub" id="topSub">tus cursos, organizados</div>
+    </div>
+    <button class="icon-btn" id="cloudBtn" onclick="openCloudSheet()">
+      <svg id="cloudIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+    </button>
+  </header>
+
+  <div class="rec-badge" id="recBadge" onclick="reopenRecordingSheet()" style="display:none;">
+    <span class="rec-badge-dot"></span>
+    <span id="recBadgeTime" class="mono">0:00</span>
+    <span>Grabando · toca para volver</span>
+  </div>
+
+  <!-- SCREENS -->
+  <div id="screensWrap">
+  <!-- COURSES SCREEN -->
+  <section class="screen active" id="screen-courses">
+    <div id="courseList"></div>
+  </section>
+
+  <!-- COURSE DETAIL SCREEN -->
+  <section class="screen" id="screen-course">
+    <div class="filters" id="filters">
+      <div class="chip active" data-f="all">Todos</div>
+      <div class="chip" data-f="text">Apuntes</div>
+      <div class="chip" data-f="audio">Audios</div>
+      <div class="chip" data-f="image">Fotos</div>
+    </div>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+  <!-- CALENDAR SCREEN -->
+  <section class="screen" id="screen-calendar">
+    <div class="cal-header">
+      <button class="icon-btn" style="background:var(--paper-raised); color:var(--navy); box-shadow:var(--shadow);" onclick="calShift(-1)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="cal-title display" id="calTitle">Julio</div>
+      <button class="icon-btn" style="background:var(--paper-raised); color:var(--navy); box-shadow:var(--shadow);" onclick="calShift(1)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
+    <div class="cal-hint">Toca un día para ver lo que guardaste</div>
+    <div class="cal-grid" id="calGrid"></div>
+  </section>
+
+  <!-- DAY SCREEN -->
+  <section class="screen" id="screen-day">
+    <div class="timeline" id="dayTimeline"></div>
+  </section>
+  </div>
+
+  <!-- FAB -->
+  <div class="fab-wrap">
+    <div class="fab-inner">
+      <div class="speed-options" id="speedOptions">
+        <div class="speed-opt"><span class="label">Foto</span>
+          <button onclick="openPhotoSheet()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+        </div>
+        <div class="speed-opt"><span class="label">Grabar</span>
+          <button onclick="openAudioSheet()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg></button>
+        </div>
+        <div class="speed-opt"><span class="label">Texto</span>
+          <button onclick="openTextSheet()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+        </div>
+      </div>
+      <button class="fab-main" id="fabMain" onclick="toggleSpeed()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <audio id="silentLoop" loop style="display:none;" src="data:audio/wav;base64,UklGRsQPAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YaAPAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA"></audio>
+
+</div>
+
+<!-- MODAL: new/edit course -->
+<div class="overlay" id="overlay-course">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2 id="courseSheetTitle">Nuevo curso</h2>
+    <div class="field">
+      <label>Nombre del curso</label>
+      <input type="text" id="courseName" placeholder="Ej. Cálculo II, Historia del Perú...">
+    </div>
+    <div class="field">
+      <label>Color</label>
+      <div class="swatches" id="courseSwatches"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeOverlay('overlay-course')">Cancelar</button>
+      <button class="btn btn-primary" id="saveCourseBtn" onclick="saveCourse()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: text entry -->
+<div class="overlay" id="overlay-text">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2 id="textSheetTitle">Nuevo apunte</h2>
+    <div class="field">
+      <label>Título (opcional)</label>
+      <input type="text" id="textTitle" placeholder="Ej. Definición de límite">
+    </div>
+    <div class="field">
+      <label>Apunte</label>
+      <textarea id="textBody" placeholder="Escribe aquí..." autofocus></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeOverlay('overlay-text')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveTextEntry()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: audio recorder -->
+<div class="overlay" id="overlay-audio">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <h2 style="margin:0;">Grabar clase</h2>
+      <button class="icon-btn" style="background:var(--paper); color:var(--ink); width:34px; height:34px;" onclick="minimizeRecording()" title="Minimizar y seguir grabando">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+    </div>
+    <div class="rec-visual">
+      <div class="rec-bars" id="recBars">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="rec-timer mono" id="recTimer">0:00</div>
+      <button class="rec-btn" id="recBtn" onclick="toggleRecording()">
+        <svg id="recIcon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+      </button>
+      <audio id="recPreview" controls style="display:none;"></audio>
+    </div>
+    <div class="mark-row">
+      <button class="mark-btn" id="pauseBtn" onclick="togglePauseRecording()" disabled>⏸ Pausar</button>
+      <button class="mark-btn" id="markBtn" onclick="toggleMark()" disabled>🔖 Marcar momento</button>
+    </div>
+    <div class="rec-status" id="recStatus" style="display:none;"></div>
+    <div class="mic-row">
+      <span class="mic-ico">🎙️</span>
+      <select id="micSelect" onchange="onMicPrefChange(this.value)">
+        <option value="builtin">Micrófono del teléfono (recomendado)</option>
+        <option value="system">El que elija el sistema</option>
+      </select>
+    </div>
+    <div class="marks-live" id="marksLive"></div>
+    <div class="rec-hint" style="display:block;">⬇️ Puedes minimizar y seguir tomando notas o fotos mientras se graba.</div>
+    <div class="rec-hint" id="recHint" style="display:none;">🔓 También puedes marcar, pausar y detener desde los controles de tu pantalla de bloqueo.</div>
+    <div class="field" style="margin-top:6px;">
+      <label>Título (opcional)</label>
+      <input type="text" id="audioTitle" placeholder="Ej. Clase 4 - Repaso parcial">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="cancelAudioSheet()">Cancelar</button>
+      <button class="btn btn-primary" id="saveAudioBtn" onclick="saveAudioEntry()" disabled>Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: photo -->
+<div class="overlay" id="overlay-photo">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Agregar foto</h2>
+    <div class="photo-input-row">
+      <div class="photo-tile" onclick="document.getElementById('cameraInput').click()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Tomar foto
+      </div>
+      <div class="photo-tile" onclick="document.getElementById('galleryInput').click()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        Desde galería
+      </div>
+    </div>
+    <input class="hidden-input" type="file" id="cameraInput" accept="image/*" capture="environment">
+    <input class="hidden-input" type="file" id="galleryInput" accept="image/*">
+    <img class="photo-preview" id="photoPreview">
+    <div class="field" style="margin-top:14px;">
+      <label>Descripción (opcional)</label>
+      <input type="text" id="photoCaption" placeholder="Ej. Pizarrón - ejercicio 3">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeOverlay('overlay-photo')">Cancelar</button>
+      <button class="btn btn-primary" id="savePhotoBtn" onclick="savePhotoEntry()" disabled>Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: view entry -->
+<div class="overlay" id="overlay-view">
+  <div class="sheet" id="viewSheetContent"></div>
+</div>
+
+<!-- MODAL: cloud backup settings -->
+<div class="overlay" id="overlay-cloud">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Respaldo en la nube</h2>
+    <div id="cloudStatusBox" style="font-size:12.5px; color:var(--ink-soft); margin-bottom:16px; line-height:1.5;">Sin configurar. Tus datos solo viven en este celular.</div>
+
+    <div id="cloudSetupFields">
+      <div class="field">
+        <label>Project URL de Supabase</label>
+        <input type="text" id="cloudUrl" placeholder="https://xxxxx.supabase.co">
+      </div>
+      <div class="field">
+        <label>Anon public key</label>
+        <input type="text" id="cloudKey" placeholder="eyJhbGciOi...">
+      </div>
+      <button class="btn btn-primary" onclick="saveCloudConfig()">Conectar</button>
+    </div>
+
+    <!-- Paso 1: elegir registrarse o iniciar sesión -->
+    <div id="cloudAuthChoice" style="display:none;">
+      <p style="font-size:13px; color:var(--ink-soft); margin-bottom:14px;">Para respaldar y traer tus apuntes desde otro celular, necesitas una cuenta con tu correo.</p>
+      <button class="btn btn-primary" style="margin-bottom:10px;" onclick="showAuthForm('login')">Ya tengo cuenta · Iniciar sesión</button>
+      <button class="btn btn-ghost" style="border:1px solid var(--line);" onclick="showAuthForm('register')">Es mi primera vez · Registrarme</button>
+    </div>
+
+    <!-- Paso 2: pedir correo y luego código -->
+    <div id="cloudAuthForm" style="display:none;">
+      <div class="field">
+        <label id="authEmailLabel">Tu correo</label>
+        <input type="email" id="authEmail" placeholder="tucorreo@ejemplo.com">
+      </div>
+      <button class="btn btn-primary" style="margin-bottom:10px;" onclick="sendAuthCode()" id="sendCodeBtn">Enviarme código</button>
+
+      <div id="authOtpFields" style="display:none;">
+        <div class="field">
+          <label>Código de 6 dígitos (revisa tu correo, y spam)</label>
+          <input type="text" id="authOtpCode" inputmode="numeric" maxlength="6" placeholder="123456">
+        </div>
+        <button class="btn btn-primary" style="margin-bottom:10px;" onclick="confirmAuthCode()">Confirmar</button>
+      </div>
+
+      <button class="btn btn-ghost" style="border:1px solid var(--line);" onclick="showAuthChoice()">‹ Volver</button>
+    </div>
+
+    <!-- Paso 3: ya con sesión -->
+    <div id="cloudConnectedFields" style="display:none;">
+      <div class="field" style="margin-bottom:14px;">
+        <label>Sesión activa</label>
+        <div style="font-size:14px; font-weight:600;" id="connectedEmail"></div>
+      </div>
+      <button class="btn btn-primary" onclick="manualSync()" id="manualSyncBtn">🔄 Sincronizar ahora</button>
+      <button class="btn btn-ghost" style="margin-top:8px; border:1px solid var(--line);" onclick="logoutCloud()">Cerrar sesión en este dispositivo</button>
+      <button class="btn btn-ghost" style="margin-top:8px;" onclick="disconnectCloud()">Desconectar respaldo</button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeOverlay('overlay-cloud')">Cerrar</button>
+    </div>
+    <div style="text-align:center; font-size:10.5px; color:var(--ink-soft); margin-top:14px; opacity:0.6;" class="mono">Apuntes U · v13</div>
+  </div>
+</div>
+
+<!-- FULLSCREEN IMAGE VIEWER -->
+<div class="img-viewer" id="imgViewer">
+  <button class="icon-btn" id="imgViewerClose" onclick="closeImageViewer()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+  </button>
+  <button class="icon-btn" id="imgViewerSave" onclick="saveCurrentImage()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+  </button>
+  <div class="img-viewer-stage" id="imgViewerStage">
+    <img id="imgViewerImg" src="" alt="">
+  </div>
+</div>
+
+<script>
+/* ---------------- IndexedDB layer ---------------- */
+let db;
+const DB_VERSION = 3;
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open('apuntesU', DB_VERSION);
+    req.onupgradeneeded = e=>{
+      const d = e.target.result;
+      const t = e.target.transaction;
+      if(!d.objectStoreNames.contains('courses')){
+        const courses = d.createObjectStore('courses',{keyPath:'id'});
+        courses.createIndex('createdAt','createdAt');
+      }
+      if(!d.objectStoreNames.contains('entries')){
+        const entries = d.createObjectStore('entries',{keyPath:'id'});
+        entries.createIndex('courseId','courseId');
+        entries.createIndex('createdAt','createdAt');
+      }
+      /* v2+: media pesada fuera de 'entries' para que los listados sean livianos */
+      if(!d.objectStoreNames.contains('blobs')){
+        d.createObjectStore('blobs',{keyPath:'id'});
+      }
+      /* v2+: trozos de grabación persistidos en vivo (anti-pérdida) */
+      if(!d.objectStoreNames.contains('recchunks')){
+        const rc = d.createObjectStore('recchunks',{keyPath:'key'});
+        rc.createIndex('sessionId','sessionId');
+      }
+      if(!d.objectStoreNames.contains('recmeta')){
+        d.createObjectStore('recmeta',{keyPath:'id'});
+      }
+      /* migración: sacar los blobs de las entradas existentes */
+      if(e.oldVersion < 3){
+        try{
+          const es = t.objectStore('entries');
+          const bs = t.objectStore('blobs');
+          es.openCursor().onsuccess = ev=>{
+            const cur = ev.target.result;
+            if(!cur) return;
+            const val = cur.value;
+            if(val && val.blob){
+              bs.put({id: val.id, blob: val.blob, thumb: val.thumbBlob || null});
+              delete val.blob; delete val.thumbBlob;
+              val.hasBlob = true;
+              cur.update(val);
+            }
+            cur.continue();
+          };
+        }catch(err){ console.warn('migración blobs', err); }
+      }
+    };
+    req.onsuccess = e=>{ db = e.target.result; resolve(db); };
+    req.onerror = e=> reject(e);
+  });
+}
+function tx(store, mode='readonly'){ return db.transaction(store, mode).objectStore(store); }
+function dbAdd(store, obj){ return new Promise((res,rej)=>{ const r = tx(store,'readwrite').add(obj); r.onsuccess=()=>res(obj); r.onerror=(e)=>rej(e); }); }
+function dbPut(store, obj){ return new Promise((res,rej)=>{ const r = tx(store,'readwrite').put(obj); r.onsuccess=()=>res(obj); r.onerror=(e)=>rej(e); }); }
+function dbDelete(store, id){ return new Promise((res,rej)=>{ const r = tx(store,'readwrite').delete(id); r.onsuccess=()=>res(); r.onerror=(e)=>rej(e); }); }
+function dbGetAll(store){ return new Promise((res,rej)=>{ const r = tx(store).getAll(); r.onsuccess=()=>res(r.result); r.onerror=(e)=>rej(e); }); }
+function dbGetAllByIndex(store, index, value){
+  return new Promise((res,rej)=>{
+    const r = tx(store).index(index).getAll(value);
+    r.onsuccess=()=>res(r.result); r.onerror=(e)=>rej(e);
+  });
+}
+function dbGet(store, id){ return new Promise((res,rej)=>{ const r = tx(store).get(id); r.onsuccess=()=>res(r.result); r.onerror=(e)=>rej(e); }); }
+async function dbDeleteByIndex(store, index, value){
+  const keys = await new Promise((res,rej)=>{
+    const r = tx(store).index(index).getAllKeys(IDBKeyRange.only(value));
+    r.onsuccess=()=>res(r.result||[]); r.onerror=e=>rej(e);
+  });
+  if(!keys.length) return;
+  await new Promise((res,rej)=>{
+    const s = tx(store,'readwrite');
+    keys.forEach(k=> s.delete(k));
+    s.transaction.oncomplete = ()=>res();
+    s.transaction.onerror = e=>rej(e);
+  });
+}
+
+/* -------- media store (blobs pesados separados de la metadata) -------- */
+async function getEntryBlob(entry){
+  if(!entry) return null;
+  const rec = await dbGet('blobs', entry.id);
+  if(rec && rec.blob) return rec.blob;
+  return await ensureBlob(entry);   // descarga desde la nube si hace falta
+}
+async function getEntryThumb(entry){
+  const rec = await dbGet('blobs', entry.id);
+  if(rec && rec.thumb) return rec.thumb;
+  const full = rec && rec.blob ? rec.blob : await ensureBlob(entry);
+  if(!full) return null;
+  const th = await makeThumb(full, 480);
+  try{ await dbPut('blobs', {id: entry.id, blob: full, thumb: th || null}); }catch(err){}
+  return th || full;
+}
+async function setEntryBlob(id, blob, thumb){
+  await dbPut('blobs', {id, blob, thumb: thumb || null});
+}
+function makeThumb(blob, max){
+  return new Promise(resolve=>{
+    if(!blob || !/^image\//.test(blob.type||'')) return resolve(null);
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    let settled = false;
+    const done = v=>{ if(settled) return; settled = true; try{ URL.revokeObjectURL(url); }catch(e){} resolve(v); };
+    /* si el decodificado se cuelga, seguimos sin miniatura en vez de bloquear el guardado */
+    setTimeout(()=> done(null), 6000);
+    img.onload = ()=>{
+      try{
+        const scale = Math.min(1, max/Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width*scale));
+        const h = Math.max(1, Math.round(img.height*scale));
+        const c = document.createElement('canvas');
+        c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        c.toBlob(b=>done(b), 'image/jpeg', 0.72);
+      }catch(err){ done(null); }
+    };
+    img.onerror = ()=> done(null);
+    img.src = url;
+  });
+}
+
+/* -------- avisos flotantes -------- */
+let toastTimer = null;
+function toast(msg, ms){
+  let el = document.getElementById('auToast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'auToast';
+    el.className = 'au-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> el.classList.remove('show'), ms || 4200);
+}
+
+/* ---------------- cloud sync (Supabase) ---------------- */
+let supabaseClient = null;
+let cloudReady = false;
+const CLOUD_CFG_KEY = 'au_cloud_config';
+
+function getCloudConfig(){
+  try{ return JSON.parse(localStorage.getItem(CLOUD_CFG_KEY) || 'null'); }catch(e){ return null; }
+}
+function setCloudStatus(text, color){
+  const box = document.getElementById('cloudStatusBox');
+  if(box) box.textContent = text;
+  const icon = document.getElementById('cloudIcon');
+  if(icon) icon.style.color = color || '';
+}
+let authMode = null; // 'login' | 'register'
+
+/* Ya no usamos sign-in anónimo. El cliente de Supabase se crea siempre que
+   haya URL+key guardadas, pero cloudReady (poder sincronizar) solo es true
+   cuando existe una sesión real con correo (después de verificar el código). */
+async function initCloud(){
+  const cfg = getCloudConfig();
+  if(!cfg || !cfg.url || !cfg.key){
+    setCloudStatus('Sin configurar. Tus datos solo viven en este celular.', '');
+    return;
+  }
+  try{
+    supabaseClient = supabase.createClient(cfg.url, cfg.key);
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    if(error) throw error;
+    document.getElementById('cloudSetupFields').style.display = 'none';
+    document.getElementById('cloudUrl').value = cfg.url;
+    document.getElementById('cloudKey').value = cfg.key;
+
+    if(session && session.user && session.user.email){
+      cloudReady = true;
+      showConnectedView(session.user.email);
+      pullFromCloud();
+    } else {
+      cloudReady = false;
+      showAuthChoice();
+      setCloudStatus('Conectado al proyecto. Regístrate o inicia sesión con tu correo para respaldar y traer tus apuntes.', '');
+    }
+  }catch(err){
+    cloudReady = false;
+    const detail = (err && (err.message || err.error_description || err.msg)) || 'error desconocido';
+    setCloudStatus('No se pudo conectar: ' + detail + '. Revisa la URL y la key del proyecto.', '#E0A438');
+    console.error('Cloud connect error:', err);
+  }
+}
+function openCloudSheet(){
+  const cfg = getCloudConfig();
+  if(cfg){
+    document.getElementById('cloudSetupFields').style.display='none';
+  } else {
+    document.getElementById('cloudSetupFields').style.display='block';
+    document.getElementById('cloudAuthChoice').style.display='none';
+    document.getElementById('cloudAuthForm').style.display='none';
+    document.getElementById('cloudConnectedFields').style.display='none';
+  }
+  openOverlay('overlay-cloud');
+}
+async function saveCloudConfig(){
+  const url = document.getElementById('cloudUrl').value.trim();
+  const key = document.getElementById('cloudKey').value.trim();
+  if(!url || !key) return;
+  localStorage.setItem(CLOUD_CFG_KEY, JSON.stringify({url, key}));
+  setCloudStatus('Conectando…', '');
+  await initCloud();
+}
+function disconnectCloud(){
+  if(!confirm('Esto deja de respaldar en la nube desde este dispositivo. Tus datos ya guardados en Supabase no se borran. ¿Continuar?')) return;
+  try{ supabaseClient && supabaseClient.auth.signOut(); }catch(e){}
+  localStorage.removeItem(CLOUD_CFG_KEY);
+  supabaseClient = null; cloudReady = false;
+  document.getElementById('cloudUrl').value='';
+  document.getElementById('cloudKey').value='';
+  document.getElementById('cloudSetupFields').style.display='block';
+  document.getElementById('cloudAuthChoice').style.display='none';
+  document.getElementById('cloudAuthForm').style.display='none';
+  document.getElementById('cloudConnectedFields').style.display='none';
+  setCloudStatus('Sin configurar. Tus datos solo viven en este celular.', '');
+}
+
+/* ---- paso 1: elegir ---- */
+function showAuthChoice(){
+  document.getElementById('cloudAuthChoice').style.display='block';
+  document.getElementById('cloudAuthForm').style.display='none';
+  document.getElementById('cloudConnectedFields').style.display='none';
+}
+
+/* ---- paso 2: correo + código ---- */
+function showAuthForm(mode){
+  authMode = mode;
+  document.getElementById('cloudAuthChoice').style.display='none';
+  document.getElementById('cloudAuthForm').style.display='block';
+  document.getElementById('cloudConnectedFields').style.display='none';
+  document.getElementById('authEmailLabel').textContent = mode==='register'
+    ? 'Tu correo (crearemos tu cuenta)'
+    : 'Tu correo (ya registrado en otro dispositivo)';
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authOtpCode').value = '';
+  document.getElementById('authOtpFields').style.display='none';
+  const btn = document.getElementById('sendCodeBtn');
+  btn.disabled = false; btn.textContent = 'Enviarme código';
+}
+async function sendAuthCode(){
+  const email = document.getElementById('authEmail').value.trim();
+  if(!email) return;
+  const btn = document.getElementById('sendCodeBtn');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  try{
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: authMode === 'register' }
+    });
+    if(error) throw error;
+    document.getElementById('authOtpFields').style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Reenviar código';
+  }catch(err){
+    btn.disabled = false; btn.textContent = 'Enviarme código';
+    const msg = (err && err.message || '').toLowerCase();
+    if(msg.includes('rate limit')){
+      alert('Supabase limita los correos de autenticación (plan gratis: pocos por hora). Espera unos minutos, o configura un proveedor SMTP propio en Authentication → Emails para no depender de ese límite.');
+    } else if(authMode === 'login' && (msg.includes('not found') || msg.includes('signups not allowed'))){
+      alert('No encontramos una cuenta con ese correo. Usa "Registrarme" primero desde este u otro dispositivo.');
+    } else {
+      alert('No se pudo enviar el código: ' + (err.message || 'intenta de nuevo.'));
+    }
+  }
+}
+async function confirmAuthCode(){
+  const email = document.getElementById('authEmail').value.trim();
+  const token = document.getElementById('authOtpCode').value.trim();
+  if(!email || !token) return;
+  try{
+    const { error } = await supabaseClient.auth.verifyOtp({ email, token, type:'email' });
+    if(error) throw error;
+    cloudReady = true;
+    showConnectedView(email);
+    setCloudStatus('Sesión iniciada con ' + email + '. Sincronizando…', 'rgba(255,255,255,0.95)');
+    await pushAllLocal();
+    await pullFromCloud();
+    setCloudStatus('Conectado y respaldado con ' + email, 'rgba(255,255,255,0.95)');
+  }catch(err){
+    alert('Código incorrecto o vencido: ' + (err.message || 'pide uno nuevo.'));
+  }
+}
+
+/* ---- paso 3: con sesión ---- */
+function showConnectedView(email){
+  document.getElementById('cloudAuthChoice').style.display='none';
+  document.getElementById('cloudAuthForm').style.display='none';
+  document.getElementById('cloudConnectedFields').style.display='block';
+  document.getElementById('connectedEmail').textContent = email;
+}
+async function logoutCloud(){
+  if(!confirm('Vas a cerrar sesión en este dispositivo. Tus datos locales no se borran, pero dejarán de sincronizarse hasta que vuelvas a iniciar sesión. ¿Continuar?')) return;
+  try{ await supabaseClient.auth.signOut(); }catch(e){}
+  cloudReady = false;
+  showAuthChoice();
+  setCloudStatus('Conectado al proyecto. Inicia sesión o regístrate para respaldar.', '');
+}
+async function manualSync(){
+  if(!cloudReady) return;
+  const btn = document.getElementById('manualSyncBtn');
+  btn.disabled = true; btn.textContent = 'Sincronizando…';
+  try{
+    await pushAllLocal();
+    await pullFromCloud();
+    btn.textContent = '✅ Listo';
+  }catch(err){
+    btn.textContent = '⚠️ Falló, intenta de nuevo';
+  }
+  setTimeout(()=>{ btn.disabled=false; btn.textContent='🔄 Sincronizar ahora'; }, 1800);
+}
+
+/* push local -> cloud */
+async function pushCourse(course){
+  if(!cloudReady) return;
+  try{
+    await supabaseClient.from('courses').upsert({
+      id: course.id, name: course.name, color: course.color, created_at: course.createdAt
+    });
+  }catch(err){}
+}
+async function pushDeleteCourse(id){
+  if(!cloudReady) return;
+  try{ await supabaseClient.from('courses').delete().eq('id', id); }catch(err){}
+}
+async function pushEntry(entry){
+  if(!cloudReady) return;
+  try{
+    let storagePath = entry.storagePath || null;
+    if((entry.type==='audio' || entry.type==='image') && !entry.storagePath){
+      const rec = await dbGet('blobs', entry.id);
+      const media = rec && rec.blob;
+      if(media){
+        const { data:{ session } } = await supabaseClient.auth.getSession();
+        const ext = entry.type==='audio' ? 'webm' : 'jpg';
+        storagePath = `${session.user.id}/${entry.id}.${ext}`;
+        const { error: upErr } = await supabaseClient.storage.from('media').upload(storagePath, media, { upsert:true });
+        if(upErr) throw upErr;
+        entry.storagePath = storagePath;
+        await dbPut('entries', entry);
+      }
+    }
+    await supabaseClient.from('entries').upsert({
+      id: entry.id, course_id: entry.courseId, type: entry.type, title: entry.title || null,
+      text_content: entry.text || null, duration: entry.duration || null, marks: entry.marks || null,
+      storage_path: storagePath, created_at: entry.createdAt
+    });
+  }catch(err){}
+}
+async function pushDeleteEntry(entry){
+  if(!cloudReady) return;
+  try{
+    if(entry.storagePath) await supabaseClient.storage.from('media').remove([entry.storagePath]);
+    await supabaseClient.from('entries').delete().eq('id', entry.id);
+  }catch(err){}
+}
+async function pushAllLocal(){
+  if(!cloudReady) return;
+  const courses = await dbGetAll('courses');
+  for(const c of courses) await pushCourse(c);
+  const entries = await dbGetAll('entries');
+  for(const e of entries) await pushEntry(e);
+}
+
+/* pull cloud -> local (metadata only; media blobs fetched lazily on view) */
+async function pullFromCloud(){
+  if(!cloudReady) return;
+  try{
+    const { data: remoteCourses } = await supabaseClient.from('courses').select('*');
+    const localCourses = await dbGetAll('courses');
+    const localCourseIds = new Set(localCourses.map(c=>c.id));
+    for(const rc of (remoteCourses||[])){
+      if(!localCourseIds.has(rc.id)){
+        await dbAdd('courses', {id:rc.id, name:rc.name, color:rc.color, createdAt:rc.created_at});
+      }
+    }
+    const { data: remoteEntries } = await supabaseClient.from('entries').select('*');
+    const localEntries = await dbGetAll('entries');
+    const localEntryIds = new Set(localEntries.map(e=>e.id));
+    for(const re of (remoteEntries||[])){
+      if(!localEntryIds.has(re.id)){
+        await dbAdd('entries', {
+          id:re.id, courseId:re.course_id, type:re.type, title:re.title,
+          text:re.text_content, duration:re.duration, marks:re.marks,
+          storagePath:re.storage_path, createdAt:re.created_at, hasBlob:false
+          /* no blob yet — downloaded on demand when opened */
+        });
+      }
+    }
+    if(currentScreen==='courses') renderCourses();
+    if(currentScreen==='course') renderTimeline();
+    if(currentScreen==='calendar') renderCalendar();
+  }catch(err){}
+}
+/* fetch a blob from storage the first time an entry is opened on this device */
+async function ensureBlob(entry){
+  if(!entry) return null;
+  const local = await dbGet('blobs', entry.id);
+  if(local && local.blob) return local.blob;
+  if(!entry.storagePath || !cloudReady) return null;
+  try{
+    const { data, error } = await supabaseClient.storage.from('media').download(entry.storagePath);
+    if(error) throw error;
+    await dbPut('blobs', {id: entry.id, blob: data, thumb: null});
+    if(!entry.hasBlob){ entry.hasBlob = true; await dbPut('entries', entry); }
+    return data;
+  }catch(err){ return null; }
+}
+
+
+const COURSE_COLORS = ['#20304D','#3F7C6E','#C6577A','#E0A438','#4A5FC1','#8B5FBF'];
+let currentCourseId = null;
+let currentFilter = 'all';
+let editingCourseId = null;
+let allCourses = [];
+
+const uid = ()=> Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const ICON = {
+  text:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  audio:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4"/></svg>',
+  image:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>'
+};
+
+/* ---------------- init ---------------- */
+window.addEventListener('load', async ()=>{
+  history.replaceState({screen:'courses'}, '', '#courses');
+  await openDB();
+  buildSwatches();
+  await renderCourses();
+  document.getElementById('cameraInput').addEventListener('change', handlePhotoFile);
+  document.getElementById('galleryInput').addEventListener('change', handlePhotoFile);
+  document.querySelectorAll('.chip').forEach(c=>{
+    c.addEventListener('click', ()=> setFilter(c.dataset.f));
+  });
+  maybeOnboard();
+  updateFabVisibility();
+  initCloud();
+  recoverOrphanRecordings();
+  initNativeRecordingChannel();
+});
+
+/* Último volcado a disco si el sistema se lleva la app por delante */
+window.addEventListener('pagehide', ()=>{
+  try{ if(mediaRecorder && mediaRecorder.state==='recording') mediaRecorder.requestData(); }catch(e){}
+});
+window.addEventListener('beforeunload', (e)=>{
+  if(mediaRecorder && mediaRecorder.state!=='inactive'){
+    try{ mediaRecorder.requestData(); }catch(err){}
+    e.preventDefault(); e.returnValue = '';
+  }
+});
+if(navigator.mediaDevices && navigator.mediaDevices.addEventListener){
+  navigator.mediaDevices.addEventListener('devicechange', ()=>{
+    if(document.getElementById('overlay-audio').classList.contains('active')) renderMicPicker();
+  });
+}
+
+function maybeOnboard(){
+  if(localStorage.getItem('au_onboarded')) return;
+  const ob = document.createElement('div');
+  ob.className='onboard';
+  ob.innerHTML = `
+    <h1>Apuntes U</h1>
+    <p>Organiza cada curso por separado: escribe apuntes, graba tus clases y guarda fotos del pizarrón. Todo se queda en tu teléfono.</p>
+    <button onclick="this.parentElement.remove(); localStorage.setItem('au_onboarded','1')">Empezar</button>
+    <div class="tip">Tip: desde el menú de tu navegador elige "Agregar a pantalla de inicio" para abrir esta app como cualquier otra.</div>
+  `;
+  document.body.appendChild(ob);
+}
+
+/* ---------------- navigation ---------------- */
+let currentScreen = 'courses';
+let navBackTo = 'courses';
+let navDayDate = null;
+let calState = null;
+
+function updateFabVisibility(){
+  document.querySelector('.fab-wrap').style.display = currentScreen==='course' ? 'flex' : 'none';
+  if(currentScreen!=='course') toggleSpeed(false);
+}
+function transitionTo(name, dir){
+  const next = document.getElementById('screen-'+name);
+  const cur = document.querySelector('#screensWrap .screen.active');
+  document.getElementById('backBtn').style.display = name==='courses' ? 'none' : 'flex';
+  if(cur === next){ currentScreen = name; updateFabVisibility(); return; }
+  next.style.transition = 'none';
+  next.style.transform = dir>=0 ? 'translateX(100%)' : 'translateX(-100%)';
+  next.classList.add('active');
+  void next.offsetWidth;
+  next.style.transition = '';
+  requestAnimationFrame(()=>{
+    next.style.transform = 'translateX(0)';
+    if(cur) cur.style.transform = dir>=0 ? 'translateX(-100%)' : 'translateX(100%)';
+  });
+  if(cur){
+    const prev = cur;
+    setTimeout(()=>{ prev.classList.remove('active'); }, 360);
+  }
+  currentScreen = name;
+  updateFabVisibility();
+}
+function goBack(){ history.back(); }
+function popBack(){
+  if(navBackTo==='day' && navDayDate) navToDay(navDayDate, -1);
+  else if(navBackTo==='calendar') navToCalendar(-1);
+  else navToCourses(-1);
+}
+function pushNav(screenName){
+  history.pushState({screen:screenName}, '', '#'+screenName);
+}
+window.addEventListener('popstate', ()=>{ popBack(); });
+function navToCourses(dir){
+  currentCourseId = null;
+  transitionTo('courses', dir);
+  document.getElementById('topTitle').textContent='Apuntes U';
+  document.getElementById('topSub').textContent='tus cursos, organizados';
+  navBackTo='courses';
+  renderCourses();
+}
+function goHome(){ navToCourses(-1); }
+
+async function navToCourse(id, dir, fromDay){
+  currentCourseId = id;
+  currentFilter='all';
+  document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));
+  document.querySelector('.chip[data-f="all"]').classList.add('active');
+  const course = allCourses.find(c=>c.id===id);
+  if(!course) return;
+  document.getElementById('topTitle').textContent = course.name;
+  document.getElementById('topSub').textContent = 'apuntes, audios y fotos';
+  transitionTo('course', dir);
+  navBackTo = fromDay ? 'day' : 'courses';
+  await renderTimeline();
+}
+function openCourse(id, fromDay){ navToCourse(id, 1, fromDay); pushNav('course'); }
+
+/* ---------------- calendar ---------------- */
+async function navToCalendar(dir){
+  if(!calState){ const now=new Date(); calState={year:now.getFullYear(), month:now.getMonth()}; }
+  document.getElementById('topTitle').textContent='Calendario';
+  document.getElementById('topSub').textContent='vista general de tus cursos';
+  transitionTo('calendar', dir);
+  navBackTo='courses';
+  await renderCalendar();
+}
+function openCalendar(){ navToCalendar(1); pushNav('calendar'); }
+function calShift(delta){
+  calState.month += delta;
+  if(calState.month<0){ calState.month=11; calState.year--; }
+  if(calState.month>11){ calState.month=0; calState.year++; }
+  renderCalendar();
+}
+async function renderCalendar(){
+  allCourses = await dbGetAll('courses');
+  const allEntries = await dbGetAll('entries');
+  const {year, month} = calState;
+  const monthName = new Date(year,month,1).toLocaleDateString('es-PE',{month:'long'});
+  document.getElementById('calTitle').textContent = monthName.charAt(0).toUpperCase()+monthName.slice(1);
+  const first = new Date(year,month,1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(year,month+1,0).getDate();
+  const totalCells = Math.ceil((startWeekday+daysInMonth)/7)*7;
+  const gridStart = new Date(year,month,1-startWeekday);
+  const byDate = {};
+  allEntries.forEach(e=>{
+    const key = new Date(e.createdAt).toDateString();
+    (byDate[key] = byDate[key] || new Set()).add(e.courseId);
+  });
+  const dow = ['D','L','M','M','J','V','S'];
+  let html = dow.map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  const today = new Date();
+  for(let i=0;i<totalCells;i++){
+    const d = new Date(gridStart); d.setDate(gridStart.getDate()+i);
+    const inMonth = d.getMonth()===month;
+    const key = d.toDateString();
+    const courseIds = byDate[key] ? Array.from(byDate[key]) : [];
+    const isToday = d.toDateString()===today.toDateString();
+    const tags = courseIds.slice(0,2).map(cid=>{
+      const c = allCourses.find(x=>x.id===cid);
+      if(!c) return '';
+      return `<div class="cal-tag" style="background:${c.color}">${escapeHtml(c.name)}</div>`;
+    }).join('');
+    const more = courseIds.length>2 ? `<div class="cal-more">+${courseIds.length-2}</div>` : '';
+    html += `<div class="cal-cell ${inMonth?'':'other-month'}" onclick="openDay('${d.toISOString()}')">
+      <div class="cal-daynum ${isToday?'today':''}">${d.getDate()}</div>
+      ${tags}${more}
+    </div>`;
+  }
+  document.getElementById('calGrid').innerHTML = html;
+}
+
+/* ---------------- day view ---------------- */
+async function navToDay(isoStr, dir){
+  navDayDate = isoStr;
+  const d = new Date(isoStr);
+  const label = d.toLocaleDateString('es-PE',{day:'2-digit', month:'long'});
+  document.getElementById('topTitle').textContent = label.charAt(0).toUpperCase()+label.slice(1);
+  document.getElementById('topSub').textContent = d.toLocaleDateString('es-PE',{weekday:'long'});
+  transitionTo('day', dir);
+  navBackTo='calendar';
+  await renderDayView(d);
+}
+function openDay(isoStr){ navToDay(isoStr, 1); pushNav('day'); }
+async function renderDayView(d){
+  const wrap = document.getElementById('dayTimeline');
+  const allEntries = await dbGetAll('entries');
+  allCourses = await dbGetAll('courses');
+  const key = d.toDateString();
+  let entries = allEntries.filter(e => new Date(e.createdAt).toDateString()===key);
+  entries.sort((a,b)=> b.createdAt - a.createdAt);
+  if(entries.length===0){
+    wrap.innerHTML = `<div class="empty-state">
+      <div class="glyph">🗓️</div>
+      <h3>Sin registros este día</h3>
+      <p>No guardaste apuntes, audios ni fotos en esta fecha.</p>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML = `<div class="rail" style="margin-top:14px;">` + entries.map(e=>{
+    const course = allCourses.find(c=>c.id===e.courseId);
+    const cname = course ? course.name : 'Curso eliminado';
+    const ccolor = course ? course.color : '#999';
+    const badgeClick = course ? `openCourse('${course.id}', true)` : '';
+    return `<div>
+      <div class="day-course-badge" style="background:${ccolor}" onclick="${badgeClick}">${escapeHtml(cname)} ›</div>
+      ${renderEntryCard(e)}
+    </div>`;
+  }).join('') + `</div>`;
+  mountThumbs(entries);
+}
+
+/* ---------------- swipe navigation ---------------- */
+const FILTER_ORDER = ['all','text','audio','image'];
+let touchStartX=0, touchStartY=0;
+document.addEventListener('touchstart', e=>{
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+}, {passive:true});
+document.addEventListener('touchend', e=>{
+  if(document.querySelector('.overlay.active')) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  if(Math.abs(dx)<70 || Math.abs(dy)>60) return;
+  if(currentScreen==='courses' && dx<0){ openCalendar(); return; }
+  if(currentScreen==='calendar' && dx>0){ goBack(); return; }
+  if(currentScreen==='course'){
+    const idx = FILTER_ORDER.indexOf(currentFilter);
+    if(dx<0 && idx<FILTER_ORDER.length-1) setFilter(FILTER_ORDER[idx+1]);
+    else if(dx>0 && idx>0) setFilter(FILTER_ORDER[idx-1]);
+  }
+}, {passive:true});
+
+/* ---------------- courses ---------------- */
+function buildSwatches(){
+  const wrap = document.getElementById('courseSwatches');
+  wrap.innerHTML = COURSE_COLORS.map((c,i)=>`<div class="swatch" data-color="${c}" style="background:${c}" onclick="selectSwatch('${c}')"></div>`).join('');
+}
+function selectSwatch(c){
+  document.querySelectorAll('.swatch').forEach(s=> s.classList.toggle('selected', s.dataset.color===c));
+  document.getElementById('courseSwatches').dataset.selected = c;
+}
+function openNewCourseSheet(){
+  editingCourseId = null;
+  document.getElementById('courseSheetTitle').textContent='Nuevo curso';
+  document.getElementById('courseName').value='';
+  selectSwatch(COURSE_COLORS[allCourses.length % COURSE_COLORS.length]);
+  openOverlay('overlay-course');
+}
+function openEditCourseSheet(id){
+  event.stopPropagation();
+  const c = allCourses.find(x=>x.id===id);
+  editingCourseId = id;
+  document.getElementById('courseSheetTitle').textContent='Editar curso';
+  document.getElementById('courseName').value = c.name;
+  selectSwatch(c.color);
+  openOverlay('overlay-course');
+}
+async function saveCourse(){
+  const name = document.getElementById('courseName').value.trim();
+  if(!name) return;
+  const color = document.getElementById('courseSwatches').dataset.selected || COURSE_COLORS[0];
+  let saved;
+  if(editingCourseId){
+    const c = allCourses.find(x=>x.id===editingCourseId);
+    c.name=name; c.color=color;
+    await dbPut('courses', c);
+    saved = c;
+  } else {
+    saved = {id:uid(), name, color, createdAt:Date.now()};
+    await dbAdd('courses', saved);
+  }
+  closeOverlay('overlay-course');
+  await renderCourses();
+  pushCourse(saved);
+}
+async function deleteCourse(id){
+  event.stopPropagation();
+  if(!confirm('¿Eliminar este curso y todos sus apuntes, audios y fotos? Esta acción no se puede deshacer.')) return;
+  const entries = await dbGetAllByIndex('entries','courseId', id);
+  for(const e of entries){ await dbDelete('entries', e.id); pushDeleteEntry(e); }
+  await dbDelete('courses', id);
+  await renderCourses();
+  pushDeleteCourse(id);
+}
+async function renderCourses(){
+  allCourses = await dbGetAll('courses');
+  allCourses.sort((a,b)=> b.createdAt - a.createdAt);
+  const wrap = document.getElementById('courseList');
+  if(allCourses.length===0){
+    wrap.innerHTML = `<div class="empty-state">
+      <div class="glyph">📚</div>
+      <h3>Aún no tienes cursos</h3>
+      <p>Crea tu primer curso para empezar a organizar tus apuntes, grabaciones y fotos.</p>
+    </div>`;
+  } else {
+    const counts = await dbGetAll('entries');
+    wrap.innerHTML = allCourses.map(c=>{
+      const entries = counts.filter(e=>e.courseId===c.id);
+      const n = entries.length;
+      const last = entries.length ? Math.max(...entries.map(e=>e.createdAt)) : c.createdAt;
+      return `<div class="course-card" onclick="openCourse('${c.id}')">
+        <div class="tab" style="background:${c.color}"></div>
+        <div class="body">
+          <p class="name">${escapeHtml(c.name)}</p>
+          <div class="meta">
+            <span>${n} ${n===1?'entrada':'entradas'}</span>
+            <span class="dot"></span>
+            <span class="mono">${formatShortDate(last)}</span>
+            <span class="dot"></span>
+            <span onclick="openEditCourseSheet('${c.id}')" style="text-decoration:underline;">editar</span>
+            <span class="dot"></span>
+            <span onclick="deleteCourse('${c.id}')" style="text-decoration:underline; color:#B23B4E;">eliminar</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  wrap.insertAdjacentHTML('beforeend', `<button class="btn btn-primary" style="margin-top:6px;" onclick="openNewCourseSheet()">+ Nuevo curso</button>`);
+}
+
+/* ---------------- entries / timeline ---------------- */
+function setFilter(newFilter){
+  if(newFilter===currentFilter) return;
+  const oldIndex = FILTER_ORDER.indexOf(currentFilter);
+  const newIndex = FILTER_ORDER.indexOf(newFilter);
+  const dir = newIndex>oldIndex ? 1 : -1;
+  currentFilter = newFilter;
+  document.querySelectorAll('.chip').forEach(c=> c.classList.toggle('active', c.dataset.f===newFilter));
+  const wrap = document.getElementById('timeline');
+  wrap.style.transition='none';
+  wrap.style.transform=`translateX(${dir*18}px)`;
+  wrap.style.opacity='0';
+  renderTimeline().then(()=>{
+    requestAnimationFrame(()=>{
+      wrap.style.transition='transform .22s ease, opacity .22s ease';
+      wrap.style.transform='translateX(0)';
+      wrap.style.opacity='1';
+    });
+  });
+}
+async function renderTimeline(){
+  const wrap = document.getElementById('timeline');
+  let entries = await dbGetAllByIndex('entries','courseId', currentCourseId);
+  if(currentFilter!=='all') entries = entries.filter(e=>e.type===currentFilter);
+  entries.sort((a,b)=> b.createdAt - a.createdAt);
+  if(entries.length===0){
+    wrap.innerHTML = `<div class="empty-state">
+      <div class="glyph">🗒️</div>
+      <h3>Nada por aquí todavía</h3>
+      <p>Usa el botón + para escribir un apunte, grabar la clase o subir una foto del pizarrón.</p>
+    </div>`;
+    return;
+  }
+  const groups = {};
+  entries.forEach(e=>{
+    const key = formatDayKey(e.createdAt);
+    (groups[key] = groups[key]||[]).push(e);
+  });
+  wrap.innerHTML = Object.keys(groups).map(key=>{
+    const items = groups[key];
+    return `<div class="day-group">
+      <div class="day-label mono">${key}</div>
+      <div class="rail">
+        ${items.map(e=>renderEntryCard(e)).join('')}
+      </div>
+    </div>`;
+  }).join('');
+  mountThumbs(entries);
+}
+
+/* ---- carga perezosa de miniaturas + liberación de object URLs ---- */
+let mediaUrls = [];
+let thumbObserver = null;
+function trackUrl(u){ mediaUrls.push(u); return u; }
+function releaseMediaUrls(){
+  mediaUrls.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
+  mediaUrls = [];
+}
+function mountThumbs(entries){
+  if(thumbObserver){ thumbObserver.disconnect(); thumbObserver = null; }
+  releaseMediaUrls();
+  const imgs = entries.filter(e=>e.type==='image');
+  if(!imgs.length) return;
+  const byId = new Map(imgs.map(e=>['thumb-'+e.id, e]));
+  const load = async (img)=>{
+    const e = byId.get(img.id);
+    if(!e || img.dataset.loaded) return;
+    img.dataset.loaded = '1';
+    const b = await getEntryThumb(e);
+    if(b) img.src = trackUrl(URL.createObjectURL(b));
+  };
+  if(!('IntersectionObserver' in window)){
+    byId.forEach((e,id)=>{ const el = document.getElementById(id); if(el) load(el); });
+    return;
+  }
+  thumbObserver = new IntersectionObserver(obs=>{
+    obs.forEach(o=>{
+      if(!o.isIntersecting) return;
+      thumbObserver.unobserve(o.target);
+      load(o.target);
+    });
+  }, {rootMargin:'400px 0px'});
+  byId.forEach((e,id)=>{ const el = document.getElementById(id); if(el) thumbObserver.observe(el); });
+}
+function renderEntryCard(e){
+  const time = formatTime(e.createdAt);
+  if(e.type==='text'){
+    return `<div class="entry" onclick="viewEntry('${e.id}')">
+      <div class="eicon">${ICON.text}</div>
+      <div class="econtent">
+        <p class="etitle">${escapeHtml(e.title || 'Apunte')}</p>
+        <p class="esnippet">${escapeHtml(e.text||'')}</p>
+        <p class="etime mono">${time}</p>
+      </div>
+    </div>`;
+  }
+  if(e.type==='audio'){
+    return `<div class="entry" onclick="viewEntry('${e.id}')">
+      <div class="eicon">${ICON.audio}</div>
+      <div class="econtent">
+        <p class="etitle">${escapeHtml(e.title || 'Grabación de clase')}</p>
+        <p class="esnippet">Audio · ${formatDuration(e.duration||0)}</p>
+        <p class="etime mono">${time}</p>
+      </div>
+    </div>`;
+  }
+  return `<div class="entry" onclick="viewEntry('${e.id}')">
+    <div class="eicon">${ICON.image}</div>
+    <div class="econtent" style="width:100%;">
+      <p class="etitle">${escapeHtml(e.title || 'Foto')}</p>
+      <img class="thumb" id="thumb-${e.id}" alt="" decoding="async" loading="lazy">
+      <p class="etime mono">${time}</p>
+    </div>
+  </div>`;
+}
+
+async function viewEntry(id){
+  const e = await new Promise((res,rej)=>{ const r = tx('entries').get(id); r.onsuccess=()=>res(r.result); r.onerror=rej; });
+  if(!e) return;
+  const sheet = document.getElementById('viewSheetContent');
+  let media = null;
+  if(e.type==='audio' || e.type==='image'){
+    const rec = await dbGet('blobs', e.id);
+    media = rec && rec.blob ? rec.blob : null;
+  }
+  /* Reparar duraciones perdidas o en 0 (grabaciones largas antiguas) */
+  if(e.type==='audio' && media && (!e.duration || !isFinite(Number(e.duration)) || Number(e.duration) <= 0)){
+    const d = await measureBlobDuration(media);
+    if(d){ e.duration = d; try{ await dbPut('entries', e); }catch(err){} }
+  }
+  const needsDownload = (e.type==='audio' || e.type==='image') && !media && e.storagePath;
+  let inner = '';
+  if(e.type==='text'){
+    inner = `<h2>${escapeHtml(e.title||'Apunte')}</h2>
+      <div class="view-meta mono">${formatFullDate(e.createdAt)}</div>
+      <div class="view-body">${escapeHtml(e.text||'')}</div>`;
+  } else if(needsDownload){
+    inner = `<h2>${escapeHtml(e.title || (e.type==='audio'?'Grabación de clase':'Foto'))}</h2>
+      <div class="view-meta mono">${formatFullDate(e.createdAt)}</div>
+      <div class="empty-state" style="padding:30px 10px;"><div class="glyph">☁️</div><p>Descargando desde tu respaldo…</p></div>`;
+  } else if(e.type==='audio'){
+    const url = trackUrl(URL.createObjectURL(media));
+    const marks = e.marks || [];
+    const dur = e.duration || 1;
+    inner = `<h2>${escapeHtml(e.title||'Grabación de clase')}</h2>
+      <div class="view-meta mono">${formatFullDate(e.createdAt)} · ${formatDuration(e.duration||0)}</div>
+      <div class="aplayer">
+        <div class="aplayer-row">
+          <button class="aplayer-skipbtn" onclick="aplayerSkip(-10)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg>
+            <span>10</span>
+          </button>
+          <button class="aplayer-playbtn" id="aplayPlayBtn" onclick="aplayerToggle()">
+            <svg id="aplayIcon" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+          </button>
+          <button class="aplayer-skipbtn" onclick="aplayerSkip(10)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 4v5h-5"/></svg>
+            <span>10</span>
+          </button>
+          <div class="aplayer-time mono" id="aplayTime">0:00 / ${formatDuration(e.duration||0)}</div>
+        </div>
+        <div class="aplayer-bar" id="aplayBar" onclick="aplayerSeek(event)">
+          <div class="aplayer-fill" id="aplayFill"></div>
+          <div class="aplayer-fixing" id="aplayFixing"></div>
+          ${marks.map(m=>{
+            const left = (m.start/dur*100).toFixed(2);
+            const width = Math.max(1,((m.end-m.start)/dur*100)).toFixed(2);
+            return `<div class="aplayer-mark" style="left:${left}%; width:${width}%"></div>`;
+          }).join('')}
+        </div>
+        ${marks.length ? `<div class="marks-list">${marks.map((m,i)=>`<div class="mark-chip" onclick="aplayerJump(${m.start})"><span>🔖 Marca ${i+1}</span><span class="mtime">${formatDuration(m.start)}</span></div>`).join('')}</div>` : ''}
+      </div>
+      <audio id="aplayerEl" src="${url}" style="display:none;"></audio>`;
+  } else {
+    const url = trackUrl(URL.createObjectURL(media));
+    inner = `<h2>${escapeHtml(e.title||'Foto')}</h2>
+      <div class="view-meta mono">${formatFullDate(e.createdAt)}</div>
+      <img class="view-img" src="${url}" style="cursor:zoom-in;" onclick="openImageViewer('${url}')">`;
+  }
+  inner += `<div class="btn-row" style="margin-top:18px;">
+      <button class="btn btn-ghost" onclick="closeOverlay('overlay-view')">Cerrar</button>
+      ${e.type==='text' ? `<button class="btn btn-primary" onclick="editEntryFromView('${e.id}')">✎ Editar</button>` : ''}
+      <button class="btn btn-danger" onclick="deleteEntry('${e.id}')">Eliminar</button>
+    </div>`;
+  sheet.innerHTML = `<div class="sheet-handle"></div>` + inner;
+  openOverlay('overlay-view');
+  if(needsDownload){
+    ensureBlob(e).then(blob=>{
+      if(blob && document.getElementById('overlay-view').classList.contains('active')) viewEntry(id);
+    });
+    return;
+  }
+  if(e.type==='audio'){
+    const audioEl = document.getElementById('aplayerEl');
+    if(audioEl){
+      audioEl.addEventListener('loadedmetadata', ()=> onAplayerMetadata(audioEl, e));
+      audioEl.addEventListener('ended', ()=>{
+        const icon = document.getElementById('aplayIcon');
+        if(icon) icon.innerHTML='<polygon points="6,4 20,12 6,20"/>';
+      });
+    }
+  }
+}
+
+/* Los WebM armados a partir de varios trozos (grabaciones guardadas en vivo, o
+   recuperadas tras un corte) no traen la duración en la cabecera: Chrome/Android
+   la reporta como Infinity hasta forzar un salto grande y volver a 0. Sin este
+   arreglo, la barra de progreso queda inutilizable aunque el archivo esté bien. */
+function setAplayerReady(ready){
+  const bar = document.getElementById('aplayBar');
+  const play = document.getElementById('aplayPlayBtn');
+  const skips = document.querySelectorAll('.aplayer-skipbtn');
+  if(bar) bar.classList.toggle('fixing', !ready);
+  if(play) play.classList.toggle('disabled', !ready);
+  skips.forEach(b=> b.classList.toggle('disabled', !ready));
+}
+function onAplayerMetadata(audioEl, e){
+  if(isFinite(audioEl.duration) && audioEl.duration > 0){
+    applyRealDuration(audioEl, e);
+    setAplayerReady(true);
+    updateAplayerUI();
+    return;
+  }
+  // duración desconocida (Infinity/NaN): reparar el propio elemento de reproducción
+  setAplayerReady(false);
+  fixInfiniteDuration(audioEl).then(()=>{
+    applyRealDuration(audioEl, e);
+    setAplayerReady(true);
+    updateAplayerUI();
+  }).catch(()=>{
+    // no se pudo reparar en vivo: al menos mostrar la duración guardada y permitir play/pausa
+    setAplayerReady(true);
+    updateAplayerUI();
+  });
+}
+function fixInfiniteDuration(audioEl){
+  return new Promise((resolve, reject)=>{
+    if(audioEl !== document.getElementById('aplayerEl')) return reject(new Error('stale'));
+    const wasPaused = audioEl.paused;
+    let settled = false;
+    const finish = ok=>{
+      if(settled) return; settled = true;   // evita reentradas si el navegador
+      audioEl.removeEventListener('timeupdate', onTime);   // dispara el evento más de una vez
+      audioEl.removeEventListener('durationchange', onTime);
+      if(wasPaused) audioEl.pause();
+      ok ? resolve() : reject(new Error('timeout'));
+    };
+    const onTime = ()=>{
+      if(settled) return;
+      if(isFinite(audioEl.duration) && audioEl.duration > 0){
+        finish(true);              // se marca resuelto ANTES de tocar currentTime otra vez
+        try{ audioEl.currentTime = 0; }catch(err){}
+      }
+    };
+    audioEl.addEventListener('timeupdate', onTime);
+    audioEl.addEventListener('durationchange', onTime);
+    try{ audioEl.currentTime = 1e101; }catch(err){}
+    setTimeout(()=> finish(isFinite(audioEl.duration) && audioEl.duration > 0), 3000);
+  });
+}
+function applyRealDuration(audioEl, e){
+  if(!isFinite(audioEl.duration) || audioEl.duration <= 0) return;
+  const real = Math.floor(audioEl.duration);
+  if(Math.abs(real - (e.duration||0)) > 2){
+    e.duration = real;
+    dbPut('entries', e).catch(()=>{});
+    const meta = document.querySelector('#viewSheetContent .view-meta');
+    if(meta) meta.textContent = `${formatFullDate(e.createdAt)} · ${formatDuration(real)}`;
+  }
+}
+async function deleteEntry(id){
+  if(!confirm('¿Eliminar esta entrada?')) return;
+  const entry = await new Promise((res,rej)=>{ const r = tx('entries').get(id); r.onsuccess=()=>res(r.result); r.onerror=rej; });
+  await dbDelete('entries', id);
+  try{ await dbDelete('blobs', id); }catch(err){}
+  closeOverlay('overlay-view');
+  await renderTimeline();
+  await renderCoursesQuiet();
+  if(entry) pushDeleteEntry(entry);
+}
+async function renderCoursesQuiet(){ /* keep course counts fresh without switching screen */ }
+
+/* ---------------- custom audio player (view sheet) ---------------- */
+function aplayerToggle(){
+  const audio = document.getElementById('aplayerEl');
+  const bar = document.getElementById('aplayBar');
+  if(!audio) return;
+  if(bar && bar.classList.contains('fixing')) return;   // aún calculando la duración real
+  const icon = document.getElementById('aplayIcon');
+  if(audio.paused){
+    audio.play();
+    icon.innerHTML='<rect x="5" y="4" width="5" height="16"/><rect x="14" y="4" width="5" height="16"/>';
+    aplayerLoop();
+  } else {
+    audio.pause();
+    icon.innerHTML='<polygon points="6,4 20,12 6,20"/>';
+  }
+}
+let aplayerRaf = null, aplayerLast = 0, aplayerLastText = '';
+function aplayerLoop(){
+  cancelAnimationFrame(aplayerRaf);
+  function step(ts){
+    const audio = document.getElementById('aplayerEl');
+    if(!audio || audio.paused) return;
+    /* 5 refrescos por segundo bastan: evita repintar 60 veces por segundo */
+    if(ts - aplayerLast > 200){ aplayerLast = ts; updateAplayerUI(); }
+    aplayerRaf = requestAnimationFrame(step);
+  }
+  aplayerRaf = requestAnimationFrame(step);
+}
+function updateAplayerUI(){
+  const audio = document.getElementById('aplayerEl');
+  const fill = document.getElementById('aplayFill');
+  const timeEl = document.getElementById('aplayTime');
+  if(!audio || !fill || !timeEl) return;
+  const total = isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+  const pct = total ? (audio.currentTime/total*100) : 0;
+  fill.style.transform = `scaleX(${(pct/100).toFixed(4)})`;
+  fill.style.width = '100%';
+  const txt = `${formatDuration(audio.currentTime)} / ${formatDuration(total)}`;
+  if(txt !== aplayerLastText){ aplayerLastText = txt; timeEl.textContent = txt; }
+}
+function aplayerSeek(evt){
+  const audio = document.getElementById('aplayerEl');
+  const bar = document.getElementById('aplayBar');
+  if(!audio || !bar || bar.classList.contains('fixing') || !isFinite(audio.duration) || audio.duration<=0) return;
+  const rect = bar.getBoundingClientRect();
+  const pct = Math.min(1, Math.max(0, (evt.clientX-rect.left)/rect.width));
+  audio.currentTime = pct*audio.duration;
+  updateAplayerUI();
+}
+function aplayerSkip(delta){
+  const audio = document.getElementById('aplayerEl');
+  const bar = document.getElementById('aplayBar');
+  if(!audio || (bar && bar.classList.contains('fixing')) || !isFinite(audio.duration) || audio.duration<=0) return;
+  audio.currentTime = Math.min(audio.duration, Math.max(0, audio.currentTime + delta));
+  updateAplayerUI();
+  if(!audio.paused) aplayerLoop();
+}
+function aplayerJump(sec){
+  const audio = document.getElementById('aplayerEl');
+  const bar = document.getElementById('aplayBar');
+  if(!audio || (bar && bar.classList.contains('fixing'))) return;
+  audio.currentTime = sec;
+  audio.play();
+  const icon = document.getElementById('aplayIcon');
+  if(icon) icon.innerHTML='<rect x="5" y="4" width="5" height="16"/><rect x="14" y="4" width="5" height="16"/>';
+  aplayerLoop();
+}
+
+/* ---------------- text entry ---------------- */
+let editingEntryId = null;
+async function editEntryFromView(id){
+  const e = await new Promise((res,rej)=>{ const r = tx('entries').get(id); r.onsuccess=()=>res(r.result); r.onerror=rej; });
+  if(!e) return;
+  openEditTextSheet(e.id, e.title, e.text);
+}
+function openTextSheet(){
+  toggleSpeed(false);
+  editingEntryId = null;
+  document.getElementById('textSheetTitle').textContent = 'Nuevo apunte';
+  document.getElementById('textTitle').value='';
+  document.getElementById('textBody').value='';
+  openOverlay('overlay-text');
+}
+function openEditTextSheet(id, title, text){
+  editingEntryId = id;
+  document.getElementById('textSheetTitle').textContent = 'Editar apunte';
+  document.getElementById('textTitle').value = title || '';
+  document.getElementById('textBody').value = text || '';
+  openOverlay('overlay-text');
+}
+async function saveTextEntry(){
+  const title = document.getElementById('textTitle').value.trim();
+  const text = document.getElementById('textBody').value.trim();
+  if(!text) return;
+  let entry;
+  if(editingEntryId){
+    entry = await new Promise((res,rej)=>{ const r = tx('entries').get(editingEntryId); r.onsuccess=()=>res(r.result); r.onerror=rej; });
+    entry.title = title; entry.text = text;
+    await dbPut('entries', entry);
+    editingEntryId = null;
+    closeOverlay('overlay-text');
+    closeOverlay('overlay-view');
+  } else {
+    entry = {id:uid(), courseId:currentCourseId, type:'text', title, text, createdAt:Date.now()};
+    await dbAdd('entries', entry);
+    closeOverlay('overlay-text');
+  }
+  await renderTimeline();
+  pushEntry(entry);
+}
+
+/* ---------------- audio recording ----------------
+   Diseño anti-pérdida:
+   - MediaRecorder emite un trozo cada REC_TIMESLICE ms.
+   - Cada trozo se escribe de inmediato en IndexedDB ('recchunks').
+   - Si la app muere, otra app roba el micro, o el sistema mata la pestaña,
+     los trozos ya están en disco y se recuperan al abrir de nuevo.
+   - Solo se borran los trozos cuando la entrada ya quedó guardada.
+-------------------------------------------------------------------- */
+const REC_TIMESLICE = 4000;          // ms entre volcados a disco
+const REC_BITRATE   = 48000;         // 48 kbps mono: voz nítida y archivos ~3x más chicos
+const MIC_PREF_KEY  = 'au_mic_pref';
+
+let mediaRecorder, recordSeconds=0, recordTimer=null, recordedBlob=null, mediaStream=null;
+let currentMarks=[], markStart=null;
+let recordStartedAt=null, recordAccumSeconds=0;
+let recSessionId=null, recSeq=0, recMime='', recPart=1, recSessionStartedAt=null;
+let recFinalizing=false, recCancelled=false, recAutoResumeTimer=null, recMuteTimer=null;
+let recSavedParts=[];
+let audioChunks=[];                  // se mantiene solo como respaldo en RAM
+
+function getElapsedRecordSeconds(){
+  if(mediaRecorder && mediaRecorder.state==='recording' && recordStartedAt){
+    return recordAccumSeconds + Math.floor((Date.now()-recordStartedAt)/1000);
+  }
+  return recordAccumSeconds;
+}
+function refreshRecordTimerUI(){
+  recordSeconds = getElapsedRecordSeconds();
+  const t = document.getElementById('recTimer');
+  const b = document.getElementById('recBadgeTime');
+  if(t) t.textContent = formatDuration(recordSeconds);
+  if(b) b.textContent = formatDuration(recordSeconds);
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden){
+    refreshRecordTimerUI();
+    keepSilentLoopAlive();
+    checkRecordingGap();
+  } else {
+    // al irse a segundo plano, forzar un volcado inmediato a disco
+    try{ if(mediaRecorder && mediaRecorder.state==='recording') mediaRecorder.requestData(); }catch(e){}
+  }
+});
+
+/* ---------------- servicio en primer plano (solo en la app nativa) -----
+   En el navegador (PWA), esto no hace nada — sigue funcionando igual que
+   siempre. Empaquetada como app nativa con Capacitor, esto es lo que le
+   pide a Android el permiso de "servicio en primer plano de micrófono",
+   que es la única forma real de que la grabación no se corte cuando se
+   apaga la pantalla (ver conversación sobre por qué una PWA sola no puede
+   garantizar esto). */
+function isNativeApp(){
+  return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+}
+function nativeForegroundService(){
+  return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.ForegroundService) || null;
+}
+async function startNativeForeground(part){
+  const svc = nativeForegroundService();
+  if(!svc) return;
+  try{
+    try{ await svc.requestPermissions(); }catch(e){}
+    await svc.startForegroundService({
+      id: 1,
+      title: '🔴 Grabando clase' + (part>1 ? ` (parte ${part})` : ''),
+      body: 'Toca para volver a Apuntes U',
+      smallIcon: 'ic_launcher_foreground',
+      serviceType: 128,               // ServiceType.Microphone
+      notificationChannelId: 'apuntes_rec',
+      silent: true
+    });
+  }catch(err){ console.warn('no se pudo iniciar el servicio en primer plano', err); }
+}
+async function updateNativeForeground(part){
+  const svc = nativeForegroundService();
+  if(!svc) return;
+  try{
+    await svc.updateForegroundService({
+      id: 1,
+      title: '🔴 Grabando clase' + (part>1 ? ` (parte ${part})` : ''),
+      body: 'Toca para volver a Apuntes U',
+      smallIcon: 'ic_launcher_foreground'
+    });
+  }catch(err){}
+}
+async function stopNativeForeground(){
+  const svc = nativeForegroundService();
+  if(!svc) return;
+  try{ await svc.stopForegroundService(); }catch(err){}
+}
+async function initNativeRecordingChannel(){
+  const svc = nativeForegroundService();
+  if(!svc) return;
+  try{
+    await svc.createNotificationChannel({
+      id: 'apuntes_rec', name: 'Grabación de clases',
+      description: 'Aviso mientras Apuntes U está grabando', importance: 3
+    });
+  }catch(err){}
+}
+
+/* ---------------- pantalla encendida mientras se graba ----------------
+   Evita que el celular se bloquee solo por inactividad (la causa más común
+   de que la grabación se quede en silencio). No puede evitar que el bloqueo
+   ocurra si el usuario aprieta el botón de encendido a propósito: eso es
+   una restricción de Android que ninguna app web puede saltarse.
+   (En la app nativa, el servicio en primer plano de arriba cubre justo
+   ese caso: ahí el Wake Lock es solo un refuerzo extra, no la solución.) */
+let wakeLock = null;
+async function acquireWakeLock(){
+  try{
+    if('wakeLock' in navigator && document.visibilityState==='visible'){
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', ()=>{ wakeLock = null; });
+    }
+  }catch(err){ /* batería baja, permiso denegado, etc.: seguimos igual */ }
+}
+function releaseWakeLock(){
+  if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock = null; }
+}
+
+/* ---------------- detección de "hueco de silencio" tras un bloqueo -----
+   Mientras la pantalla está apagada, Android puede cortar la captura real
+   de audio sin avisarle a la página (no dispara onended ni onmute: el
+   MediaRecorder sigue creyendo que todo está bien). No hay forma de
+   detectarlo en el momento; lo que sí se puede hacer es notarlo apenas la
+   app vuelve a estar visible, comparando cuándo se guardó el último trozo
+   real contra el momento actual. Si el hueco es grande, se cierra esa
+   parte (ya se guardó sola, con lo que sí se alcanzó a grabar) y arranca
+   una parte nueva para el resto de la clase. */
+let lastChunkAt = 0;
+const SILENCE_GAP_MS = 12000;
+function checkRecordingGap(){
+  if(!(mediaRecorder && mediaRecorder.state==='recording')) return;
+  acquireWakeLock();
+  const gapMs = Date.now() - lastChunkAt;
+  if(gapMs > SILENCE_GAP_MS){
+    const secs = Math.round(gapMs/1000);
+    const label = secs < 60 ? `${secs} s` : `${Math.round(secs/60)} min`;
+    handleMicLoss(`Se perdió el audio ~${label} mientras la pantalla estuvo bloqueada`);
+  }
+}
+
+/* ---------------- selección de micrófono ---------------- */
+const MIC_EXTERNAL_RE = /(bluetooth|headset|head[- ]?phone|aud[ií]fono|auricular|earbud|airpod|wired|manos libres|hands[- ]?free|\bbt\b|usb)/i;
+const MIC_BUILTIN_RE  = /(built[- ]?in|integrad|internal|del tel[eé]fono|tel[eé]fono|phone mic|micr[oó]fono del dispositivo|device)/i;
+
+function getMicPref(){ return localStorage.getItem(MIC_PREF_KEY) || 'builtin'; }
+function setMicPref(v){ localStorage.setItem(MIC_PREF_KEY, v); }
+
+async function listMics(){
+  try{
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    return devs.filter(d=>d.kind==='audioinput');
+  }catch(e){ return []; }
+}
+/* Devuelve el deviceId que corresponde a la preferencia, o null para "el del sistema" */
+async function resolveMicDeviceId(){
+  const pref = getMicPref();
+  if(pref === 'system') return null;
+  const devs = (await listMics()).filter(d=>d.label);
+  if(!devs.length) return null;
+  if(pref !== 'builtin'){
+    const exact = devs.find(d=>d.deviceId === pref);
+    if(exact) return exact.deviceId;
+  }
+  const real = devs.filter(d=> d.deviceId !== 'default' && d.deviceId !== 'communications');
+  const pool = real.length ? real : devs;
+  let cand = pool.find(d=> MIC_BUILTIN_RE.test(d.label) && !MIC_EXTERNAL_RE.test(d.label));
+  if(!cand) cand = pool.find(d=> !MIC_EXTERNAL_RE.test(d.label));
+  return cand ? cand.deviceId : null;
+}
+async function acquireMicStream(){
+  /* echoCancellation apagado evita que Android enrute por el "canal de llamada",
+     que es justamente el que se va a los audífonos y baja la calidad. */
+  const base = { echoCancellation:false, noiseSuppression:false, autoGainControl:true, channelCount:1 };
+  let id = await resolveMicDeviceId();
+  if(id){
+    try{ return await navigator.mediaDevices.getUserMedia({audio:{...base, deviceId:{exact:id}}}); }catch(e){}
+  }
+  // primera vez: sin permiso todavía no hay etiquetas de dispositivo
+  let stream = await navigator.mediaDevices.getUserMedia({audio: base});
+  id = await resolveMicDeviceId();
+  if(id){
+    const cur = (stream.getAudioTracks()[0].getSettings()||{}).deviceId;
+    if(cur && cur !== id){
+      stream.getTracks().forEach(t=>t.stop());
+      try{ stream = await navigator.mediaDevices.getUserMedia({audio:{...base, deviceId:{exact:id}}}); }
+      catch(e){ stream = await navigator.mediaDevices.getUserMedia({audio: base}); }
+    }
+  }
+  return stream;
+}
+async function renderMicPicker(){
+  const sel = document.getElementById('micSelect');
+  if(!sel) return;
+  const pref = getMicPref();
+  const devs = await listMics();
+  let html = '<option value="builtin">Micrófono del teléfono (recomendado)</option>'
+           + '<option value="system">El que elija el sistema</option>';
+  devs.filter(d=>d.label && d.deviceId!=='default' && d.deviceId!=='communications').forEach(d=>{
+    html += `<option value="${escapeHtml(d.deviceId)}">${escapeHtml(d.label)}</option>`;
+  });
+  sel.innerHTML = html;
+  sel.value = [...sel.options].some(o=>o.value===pref) ? pref : 'builtin';
+}
+function onMicPrefChange(v){
+  setMicPref(v);
+  toast(v==='system' ? 'Se usará el micrófono que elija el sistema.' : 'Preferencia de micrófono guardada.');
+}
+
+/* ---------------- persistencia en vivo ---------------- */
+async function persistChunk(blob){
+  if(!recSessionId || !blob || !blob.size) return;
+  lastChunkAt = Date.now();
+  const seq = recSeq++;
+  try{
+    await dbPut('recchunks', {
+      key: recSessionId + '|' + String(seq).padStart(7,'0'),
+      sessionId: recSessionId, seq, blob
+    });
+    await saveRecMeta();
+  }catch(err){
+    console.warn('no se pudo guardar el trozo', err);
+    toast('⚠️ Poco espacio libre: guarda o detén la grabación.');
+  }
+}
+async function saveRecMeta(patch){
+  if(!recSessionId) return;
+  const titleEl = document.getElementById('audioTitle');
+  try{
+    await dbPut('recmeta', Object.assign({
+      id: recSessionId,
+      courseId: recCourseId,
+      title: titleEl ? titleEl.value.trim() : '',
+      mime: recMime,
+      seconds: getElapsedRecordSeconds(),
+      marks: currentMarks.slice(),
+      part: recPart,
+      startedAt: recSessionStartedAt,
+      updatedAt: Date.now()
+    }, patch||{}));
+  }catch(err){}
+}
+async function assembleSession(sessionId, mime){
+  const rows = await dbGetAllByIndex('recchunks','sessionId', sessionId);
+  if(!rows.length) return {blob:null, rows:0};
+  rows.sort((a,b)=> a.seq - b.seq);
+  const parts = rows.map(r=>r.blob).filter(b=> b && typeof b.size === 'number' && b.size > 0);
+  if(!parts.length) return {blob:null, rows:rows.length};
+  return {blob:new Blob(parts, {type: mime || 'audio/webm'}), rows:rows.length};
+}
+async function discardSession(sessionId){
+  if(!sessionId) return;
+  try{ await dbDeleteByIndex('recchunks','sessionId', sessionId); }catch(err){}
+  try{ await dbDelete('recmeta', sessionId); }catch(err){}
+}
+
+/* ---------------- recuperación al abrir la app ---------------- */
+async function recoverOrphanRecordings(){
+  let metas = [];
+  try{ metas = await dbGetAll('recmeta'); }catch(err){ return; }
+  let recovered = 0;
+  for(const m of metas){
+    if(recSessionId && m.id === recSessionId) continue;
+    let asm = null;
+    try{ asm = await assembleSession(m.id, m.mime); }
+    catch(err){ console.warn('trozos ilegibles', err); continue; }   // NO se borra: se reintenta
+    if(!asm.rows){ await discardSession(m.id); continue; }
+    const blob = asm.blob;
+    if(!blob || blob.size < 1200){
+      /* algo salió mal al armar el audio: se reintenta hasta 3 veces antes de soltarlo */
+      const tries = (m.tries||0) + 1;
+      if(tries >= 3) await discardSession(m.id);
+      else { m.tries = tries; try{ await dbPut('recmeta', m); }catch(e){} }
+      continue;
+    }
+    let dur = Math.floor(m.seconds||0);
+    if(!dur) dur = await measureBlobDuration(blob);
+    const id = uid();
+    const base = (m.title && m.title.length ? m.title : 'Grabación de clase');
+    const entry = {
+      id, courseId: m.courseId || currentCourseId || (allCourses[0] && allCourses[0].id) || null, type:'audio',
+      title: base + (m.part>1 ? ` · parte ${m.part}` : '') + ' (recuperada)',
+      duration: dur, marks: (m.marks||[]), hasBlob:true,
+      createdAt: m.startedAt || m.updatedAt || Date.now()
+    };
+    try{
+      await setEntryBlob(id, blob, null);
+      await dbAdd('entries', entry);
+      await discardSession(m.id);
+      recovered++;
+      pushEntry(entry);
+    }catch(err){ console.warn('recuperación falló', err); }
+  }
+  if(recovered){
+    toast(recovered===1
+      ? '✅ Se recuperó una grabación que quedó interrumpida.'
+      : `✅ Se recuperaron ${recovered} grabaciones interrumpidas.`, 7000);
+    if(currentScreen==='courses') renderCourses();
+    if(currentScreen==='course') renderTimeline();
+  }
+}
+
+/* ---------------- hoja de grabación ---------------- */
+let recCourseId = null;
+function openAudioSheet(){
+  toggleSpeed(false);
+  if(mediaRecorder && mediaRecorder.state !== 'inactive'){ reopenRecordingSheet(); return; }
+  recCourseId = currentCourseId;
+  document.getElementById('audioTitle').value='';
+  document.getElementById('recTimer').textContent='0:00';
+  document.getElementById('recPreview').style.display='none';
+  document.getElementById('recPreview').src='';
+  document.getElementById('saveAudioBtn').disabled = true;
+  document.getElementById('recBars').classList.remove('live');
+  document.getElementById('recBtn').classList.remove('recording');
+  const markBtn = document.getElementById('markBtn');
+  markBtn.disabled = true;
+  markBtn.classList.remove('active');
+  markBtn.textContent = '🔖 Marcar momento';
+  const pauseBtn = document.getElementById('pauseBtn');
+  pauseBtn.disabled = true;
+  pauseBtn.classList.remove('active');
+  pauseBtn.textContent = '⏸ Pausar';
+  document.getElementById('marksLive').innerHTML = '';
+  document.getElementById('recHint').style.display = 'none';
+  document.getElementById('recBadge').style.display = 'none';
+  setRecStatus('');
+  recordedBlob = null; recordSeconds=0; audioChunks=[];
+  recordStartedAt=null; recordAccumSeconds=0;
+  currentMarks=[]; markStart=null;
+  recSessionId=null; recSeq=0; recPart=1; recSavedParts=[]; recCancelled=false;
+  renderMicPicker();
+  openOverlay('overlay-audio');
+}
+function setRecStatus(msg, warn){
+  const el = document.getElementById('recStatus');
+  if(!el) return;
+  el.textContent = msg || '';
+  el.style.display = msg ? 'block' : 'none';
+  el.classList.toggle('warn', !!warn);
+}
+function togglePauseRecording(){
+  if(!mediaRecorder) return;
+  const pauseBtn = document.getElementById('pauseBtn');
+  if(mediaRecorder.state==='recording'){
+    try{ mediaRecorder.requestData(); }catch(e){}
+    mediaRecorder.pause();
+    recordAccumSeconds = getElapsedRecordSeconds();
+    recordStartedAt = null;
+    clearInterval(recordTimer);
+    document.getElementById('recBars').classList.remove('live');
+    pauseBtn.textContent='▶ Reanudar';
+    pauseBtn.classList.add('active');
+    stopSilentLoop();
+    saveRecMeta();
+    releaseWakeLock();
+    if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+  } else if(mediaRecorder.state==='paused'){
+    mediaRecorder.resume();
+    recordStartedAt = Date.now();
+    lastChunkAt = Date.now();
+    clearInterval(recordTimer);
+    recordTimer = setInterval(refreshRecordTimerUI, 1000);
+    document.getElementById('recBars').classList.add('live');
+    pauseBtn.textContent='⏸ Pausar';
+    pauseBtn.classList.remove('active');
+    startSilentLoop();
+    acquireWakeLock();
+    if('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+  }
+}
+
+/* ---------------- pista silenciosa (mantiene viva la app) ---------------- */
+function startSilentLoop(){
+  const s = document.getElementById('silentLoop');
+  if(!s) return;
+  s.volume = 0.0001;
+  s.play().catch(()=>{});
+}
+function stopSilentLoop(){
+  const s = document.getElementById('silentLoop');
+  if(s) s.pause();
+}
+/* Si otra app toma el foco de audio, Android pausa nuestro loop y el sistema
+   deja de considerarnos "reproduciendo". Lo revivimos. */
+function keepSilentLoopAlive(){
+  if(!(mediaRecorder && mediaRecorder.state==='recording')) return;
+  const s = document.getElementById('silentLoop');
+  if(s && s.paused) s.play().catch(()=>{});
+}
+setInterval(keepSilentLoopAlive, 5000);
+
+/* ---------------- controles de pantalla de bloqueo ---------------- */
+function startMediaSession(){
+  const silent = document.getElementById('silentLoop');
+  if(silent){ silent.currentTime = 0; }
+  startSilentLoop();
+  if('mediaSession' in navigator){
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: 'Grabando clase',
+      artist: 'Toca ⏮ para marcar · ⏸ para pausar · ⏹ para detener',
+      album: 'Apuntes U',
+      artwork: [{src:'icon-192.png', sizes:'192x192', type:'image/png'}]
+    });
+    navigator.mediaSession.playbackState = 'playing';
+    try{
+      navigator.mediaSession.setActionHandler('play', ()=> togglePauseRecording());
+      navigator.mediaSession.setActionHandler('pause', ()=> togglePauseRecording());
+      navigator.mediaSession.setActionHandler('stop', ()=>{ if(mediaRecorder && mediaRecorder.state!=='inactive') toggleRecording(); });
+      navigator.mediaSession.setActionHandler('previoustrack', ()=> toggleMark());
+    }catch(err){ /* algunas acciones no existen en todos los navegadores */ }
+    const h = document.getElementById('recHint');
+    if(h) h.style.display = 'block';
+  }
+}
+function stopMediaSession(){
+  stopSilentLoop();
+  const silent = document.getElementById('silentLoop');
+  if(silent) silent.currentTime = 0;
+  if('mediaSession' in navigator){
+    navigator.mediaSession.playbackState = 'none';
+    try{
+      navigator.mediaSession.setActionHandler('play', null);
+      navigator.mediaSession.setActionHandler('pause', null);
+      navigator.mediaSession.setActionHandler('stop', null);
+      navigator.mediaSession.setActionHandler('previoustrack', null);
+    }catch(err){}
+    navigator.mediaSession.metadata = null;
+  }
+}
+function toggleMark(){
+  const btn = document.getElementById('markBtn');
+  const now = getElapsedRecordSeconds();
+  if(markStart===null){
+    markStart = now;
+    btn.classList.add('active');
+    btn.textContent = '⏹ Cerrar marca';
+  } else {
+    const start = markStart;
+    const end = Math.max(now, markStart+1);
+    currentMarks.push({start, end});
+    markStart = null;
+    btn.classList.remove('active');
+    btn.textContent = '🔖 Marcar momento';
+    renderLiveMarks();
+    saveRecMeta();
+  }
+}
+function renderLiveMarks(){
+  document.getElementById('marksLive').innerHTML = currentMarks
+    .map(m => `<span class="mark-pill">${formatDuration(m.start)}–${formatDuration(m.end)}</span>`)
+    .join('');
+}
+async function cancelAudioSheet(){
+  const live = mediaRecorder && mediaRecorder.state!=='inactive';
+  if(live || recordedBlob){
+    if(!confirm('¿Descartar esta grabación? Se perderá lo grabado que no hayas guardado.')) return;
+  }
+  const sid = recSessionId;
+  recCancelled = true;
+  stopStream();
+  stopMediaSession();
+  closeRecordingNotification();
+  clearTimeout(recAutoResumeTimer);
+  await discardSession(sid);
+  recSessionId = null; recordedBlob = null;
+  document.getElementById('recBadge').style.display = 'none';
+  document.getElementById('overlay-audio').classList.remove('active');
+}
+function minimizeRecording(){
+  document.getElementById('overlay-audio').classList.remove('active');
+  if(mediaRecorder && mediaRecorder.state!=='inactive'){
+    document.getElementById('recBadge').style.display = 'flex';
+  }
+}
+function reopenRecordingSheet(){
+  document.getElementById('recBadge').style.display = 'none';
+  refreshRecordTimerUI();
+  renderMicPicker();
+  document.getElementById('overlay-audio').classList.add('active');
+}
+function stopStream(){
+  clearTimeout(recMuteTimer);
+  releaseWakeLock();
+  stopNativeForeground();
+  if(mediaRecorder && mediaRecorder.state!=='inactive'){
+    try{ mediaRecorder.requestData(); }catch(e){}
+    try{ mediaRecorder.stop(); }catch(e){}
+  }
+  if(mediaStream) mediaStream.getTracks().forEach(t=>t.stop());
+  mediaStream = null;
+  clearInterval(recordTimer);
+}
+
+/* ---------------- vigilancia del micrófono ---------------- */
+function watchStream(stream){
+  stream.getAudioTracks().forEach(t=>{
+    t.onended = ()=> handleMicLoss('El micrófono fue tomado por otra app');
+    t.onmute = ()=>{
+      if(!(mediaRecorder && mediaRecorder.state==='recording')) return;
+      setRecStatus('⚠️ Otra app está usando el micrófono. Guardando lo grabado…', true);
+      try{ mediaRecorder.requestData(); }catch(e){}
+      clearTimeout(recMuteTimer);
+      // si en 6 s no vuelve, cerramos y guardamos esta parte
+      recMuteTimer = setTimeout(()=>{
+        if(t.muted) handleMicLoss('Otra app tomó el micrófono');
+      }, 6000);
+    };
+    t.onunmute = ()=>{
+      clearTimeout(recMuteTimer);
+      if(mediaRecorder && mediaRecorder.state==='recording') setRecStatus('');
+    };
+  });
+}
+
+/* Guarda automáticamente lo grabado hasta ahora y trata de reanudar solo. */
+async function handleMicLoss(reason){
+  if(recFinalizing) return;
+  recFinalizing = true;
+  clearTimeout(recMuteTimer);
+  clearInterval(recordTimer);
+  const sid = recSessionId;
+  const seconds = getElapsedRecordSeconds();
+  const marks = currentMarks.slice();
+  const part = recPart;
+  try{ if(mediaRecorder && mediaRecorder.state!=='inactive'){ mediaRecorder.requestData(); mediaRecorder.stop(); } }catch(e){}
+  if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream = null; }
+  // dar tiempo a que llegue el último ondataavailable
+  await new Promise(r=>setTimeout(r, 500));
+  const saved = await finalizeSessionToEntry(sid, seconds, marks, part, true);
+  recFinalizing = false;
+  if(saved){
+    recSavedParts.push(saved);
+    notifyRecording('Grabación guardada', `${reason}. Se guardó automáticamente la parte ${part}.`);
+    toast(`💾 ${reason}. Se guardó la parte ${part} automáticamente.`, 7000);
+  }
+  setRecStatus(`💾 Parte ${part} guardada. Intentando continuar…`, true);
+  scheduleAutoResume(part+1, 0);
+}
+
+function scheduleAutoResume(nextPart, attempt){
+  clearTimeout(recAutoResumeTimer);
+  if(attempt > 20){          // ~1 minuto de reintentos
+    setRecStatus('No se pudo recuperar el micrófono. Toca ⏺ para seguir grabando.', true);
+    resetRecUIToIdle();
+    return;
+  }
+  recAutoResumeTimer = setTimeout(async ()=>{
+    try{
+      await startRecordingSegment(nextPart);
+      setRecStatus(`▶️ Grabando parte ${nextPart}. La parte anterior ya quedó guardada.`);
+      toast(`▶️ Se reanudó la grabación (parte ${nextPart}).`);
+    }catch(err){
+      scheduleAutoResume(nextPart, attempt+1);
+    }
+  }, attempt===0 ? 1500 : 3000);
+}
+
+function resetRecUIToIdle(){
+  const btn = document.getElementById('recBtn');
+  if(btn) btn.classList.remove('recording');
+  document.getElementById('recBars').classList.remove('live');
+  document.getElementById('markBtn').disabled = true;
+  document.getElementById('pauseBtn').disabled = true;
+  document.getElementById('recBadge').style.display = 'none';
+  stopMediaSession();
+  closeRecordingNotification();
+  releaseWakeLock();
+  stopNativeForeground();
+}
+
+/* Cierra una sesión de trozos y la convierte en una entrada guardada. */
+async function finalizeSessionToEntry(sessionId, seconds, marks, part, isAuto){
+  if(!sessionId) return null;
+  let asm = null;
+  try{ asm = await assembleSession(sessionId, recMime); }
+  catch(err){ console.warn('no se pudo leer los trozos', err); return null; }  // NO se borra nada
+  if(!asm.rows){ await discardSession(sessionId); return null; }               // sesión vacía
+  const blob = asm.blob;
+  if(!blob || blob.size < 1200){ return null; }   // se conserva para reintentar al reabrir
+  let dur = Math.floor(seconds||0);
+  if(!dur || !isFinite(dur)) dur = await measureBlobDuration(blob);
+  const titleEl = document.getElementById('audioTitle');
+  const base = (titleEl && titleEl.value.trim()) || 'Grabación de clase';
+  const id = uid();
+  const entry = {
+    id, courseId: recCourseId || currentCourseId, type:'audio',
+    title: base + (part>1 || isAuto ? ` · parte ${part}` : ''),
+    duration: dur, marks: marks||[], hasBlob:true,
+    createdAt: recSessionStartedAt || Date.now()
+  };
+  try{
+    await setEntryBlob(id, blob, null);
+    await dbAdd('entries', entry);
+    await discardSession(sessionId);
+  }catch(err){
+    console.warn('no se pudo guardar la parte', err);
+    return null;
+  }
+  if(currentScreen==='course') renderTimeline();
+  pushEntry(entry);
+  return entry;
+}
+
+function notifyRecording(title, body){
+  try{
+    if('Notification' in window && Notification.permission==='granted' && navigator.serviceWorker){
+      navigator.serviceWorker.ready.then(reg=> reg.showNotification(title, {body, icon:'icon-192.png', tag:'apuntes-rec'}));
+    }
+  }catch(err){}
+}
+/* Aviso fijo en la bandeja mientras se graba: no evita que Android corte el
+   micrófono al bloquear la pantalla (eso ninguna PWA puede evitarlo), pero
+   deja constancia visible de que la grabación sigue activa. */
+function showRecordingNotification(part){
+  try{
+    if('Notification' in window && Notification.permission==='granted' && navigator.serviceWorker){
+      navigator.serviceWorker.ready.then(reg=> reg.showNotification('🔴 Grabando clase' + (part>1?` (parte ${part})`:''), {
+        body:'Toca para volver a Apuntes U', icon:'icon-192.png', tag:'apuntes-rec', silent:true
+      }));
+    }
+  }catch(err){}
+}
+function closeRecordingNotification(){
+  try{
+    if('Notification' in window && navigator.serviceWorker){
+      navigator.serviceWorker.ready.then(reg=> reg.getNotifications({tag:'apuntes-rec'}).then(ns=> ns.forEach(n=>n.close())));
+    }
+  }catch(err){}
+}
+
+function pickRecMime(){
+  const cands = ['audio/webm;codecs=opus','audio/webm','audio/mp4;codecs=mp4a.40.2','audio/mp4','audio/ogg;codecs=opus'];
+  if(!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+  for(const c of cands){ if(MediaRecorder.isTypeSupported(c)) return c; }
+  return '';
+}
+
+/* Arranca (o rearranca) un segmento de grabación */
+async function startRecordingSegment(part){
+  mediaStream = await acquireMicStream();
+  watchStream(mediaStream);
+  recMime = pickRecMime();
+  const opts = {};
+  if(recMime) opts.mimeType = recMime;
+  opts.audioBitsPerSecond = REC_BITRATE;
+  try{ mediaRecorder = new MediaRecorder(mediaStream, opts); }
+  catch(e){ mediaRecorder = new MediaRecorder(mediaStream); }
+  recMime = mediaRecorder.mimeType || recMime || 'audio/webm';
+
+  recSessionId = 'rs_' + uid();
+  recSeq = 0;
+  recPart = part;
+  recSessionStartedAt = Date.now();
+  lastChunkAt = Date.now();
+  audioChunks = [];
+  currentMarks = []; markStart = null;
+  renderLiveMarks();
+  recordAccumSeconds = 0; recordStartedAt = Date.now(); recordSeconds = 0;
+  acquireWakeLock();
+
+  mediaRecorder.ondataavailable = e=>{
+    if(e.data && e.data.size>0){ audioChunks.push(e.data); persistChunk(e.data); }
+  };
+  mediaRecorder.onerror = ()=> handleMicLoss('Se interrumpió la grabación');
+  mediaRecorder.onstop = onRecorderStop;
+
+  mediaRecorder.start(REC_TIMESLICE);
+  await saveRecMeta();
+
+  const btn = document.getElementById('recBtn');
+  if(btn) btn.classList.add('recording');
+  document.getElementById('recBars').classList.add('live');
+  document.getElementById('markBtn').disabled = false;
+  document.getElementById('pauseBtn').disabled = false;
+  const pauseBtn = document.getElementById('pauseBtn');
+  pauseBtn.textContent='⏸ Pausar'; pauseBtn.classList.remove('active');
+  document.getElementById('recTimer').textContent='0:00';
+  clearInterval(recordTimer);
+  recordTimer = setInterval(refreshRecordTimerUI, 1000);
+  startMediaSession();
+  showRecordingNotification(part);
+  startNativeForeground(part);   // no-op en la PWA de navegador; en la app nativa arranca el servicio en primer plano
+  const badge = document.getElementById('recBadge');
+  if(!document.getElementById('overlay-audio').classList.contains('active')) badge.style.display='flex';
+
+  renderMicPicker();
+  const track = mediaStream.getAudioTracks()[0];
+  const label = (track && track.label) || '';
+  if(label){
+    const external = MIC_EXTERNAL_RE.test(label);
+    setRecStatus((external ? '⚠️ Grabando por: ' : '🎙️ Grabando por: ') + label
+      + (external ? ' — cambia el micrófono arriba si prefieres el del teléfono.' : ''), external);
+  }
+}
+
+function onRecorderStop(){
+  if(recFinalizing) return;      // el flujo de pérdida de micro se encarga
+  if(recCancelled){ recCancelled = false; return; }
+  clearInterval(recordTimer);
+  recordSeconds = getElapsedRecordSeconds();
+  if(markStart!==null){
+    currentMarks.push({start:markStart, end:Math.max(recordSeconds, markStart+1)});
+    markStart=null;
+    renderLiveMarks();
+  }
+  const btn = document.getElementById('recBtn');
+  if(btn) btn.classList.remove('recording');
+  document.getElementById('recBars').classList.remove('live');
+  const markBtn = document.getElementById('markBtn');
+  markBtn.disabled = true; markBtn.classList.remove('active'); markBtn.textContent = '🔖 Marcar momento';
+  const pauseBtn = document.getElementById('pauseBtn');
+  pauseBtn.disabled = true; pauseBtn.classList.remove('active'); pauseBtn.textContent = '⏸ Pausar';
+  stopMediaSession();
+  document.getElementById('recBadge').style.display = 'none';
+  setRecStatus('Preparando la vista previa…');
+  // los trozos ya están en disco; armamos el blob desde ahí (no desde RAM)
+  const sid = recSessionId, secs = recordSeconds;
+  (async ()=>{
+    let blob = null;
+    try{ const asm = await assembleSession(sid, recMime); blob = asm.blob; }catch(err){}
+    if(!blob || !blob.size) blob = new Blob(audioChunks, {type: recMime || 'audio/webm'});
+    recordedBlob = blob;
+    if(!secs || !isFinite(secs)) recordSeconds = await measureBlobDuration(blob);
+    refreshRecordTimerUI();
+    const preview = document.getElementById('recPreview');
+    if(recPreviewUrl){ try{ URL.revokeObjectURL(recPreviewUrl); }catch(e){} }
+    recPreviewUrl = URL.createObjectURL(blob);
+    preview.src = recPreviewUrl; preview.style.display='block';
+    document.getElementById('saveAudioBtn').disabled=false;
+    setRecStatus(recPart>1
+      ? `Listo. Las partes anteriores ya se guardaron solas; guarda esta parte ${recPart}.`
+      : 'Listo. Toca Guardar para archivar la grabación.');
+    await saveRecMeta({stoppedAt: Date.now(), seconds: recordSeconds});
+  })();
+}
+let recPreviewUrl = null;
+
+async function toggleRecording(){
+  if(!mediaRecorder || mediaRecorder.state==='inactive'){
+    clearTimeout(recAutoResumeTimer);
+    if(recordedBlob){
+      /* nunca se descarta en silencio: la toma anterior se archiva sola */
+      await saveAudioEntry({keepOpen:true});
+      toast('💾 La grabación anterior se guardó antes de empezar la nueva.');
+      document.getElementById('saveAudioBtn').disabled=true;
+    }
+    setRecStatus('');
+    try{
+      await startRecordingSegment(recSavedParts.length ? recSavedParts.length+1 : 1);
+    }catch(err){
+      console.warn(err);
+      alert('No se pudo acceder al micrófono. Revisa los permisos del navegador y que ninguna otra app lo esté usando.');
+      return;
+    }
+    // pedir permiso de notificación una sola vez, para poder avisar si se corta
+    try{
+      if('Notification' in window && Notification.permission==='default') Notification.requestPermission();
+    }catch(e){}
+  } else {
+    stopStream();
+  }
+}
+
+async function saveAudioEntry(opts){
+  opts = opts || {};
+  if(!recordedBlob) return;
+  const btn = document.getElementById('saveAudioBtn');
+  btn.disabled = true;
+  const title = document.getElementById('audioTitle').value.trim();
+  let dur = Math.floor(recordSeconds||0);
+  if(!dur || !isFinite(dur)) dur = await measureBlobDuration(recordedBlob);
+  const id = uid();
+  const entry = {
+    id, courseId: recCourseId || currentCourseId, type:'audio',
+    title: title + (recPart>1 ? ` · parte ${recPart}` : ''),
+    duration: dur, marks: currentMarks.slice(), hasBlob:true,
+    createdAt: recSessionStartedAt || Date.now()
+  };
+  try{
+    await setEntryBlob(id, recordedBlob, null);
+    await dbAdd('entries', entry);
+  }catch(err){
+    alert('No se pudo guardar la grabación (¿espacio lleno?). La grabación sigue a salvo y se recuperará al reabrir la app.');
+    btn.disabled = false;
+    return;
+  }
+  await discardSession(recSessionId);
+  recSessionId = null;
+  if(recPreviewUrl){ try{ URL.revokeObjectURL(recPreviewUrl); }catch(e){} recPreviewUrl=null; }
+  recordedBlob = null;
+  if(opts.keepOpen){
+    const p = document.getElementById('recPreview');
+    p.style.display='none'; p.removeAttribute('src');
+    document.getElementById('marksLive').innerHTML='';
+    currentMarks=[]; markStart=null; recordSeconds=0; recordAccumSeconds=0;
+    document.getElementById('recTimer').textContent='0:00';
+  } else {
+    closeRecordingNotification();
+    closeOverlay('overlay-audio');
+  }
+  await renderTimeline();
+  pushEntry(entry);
+  return entry;
+}
+
+/* ---------------- photo entry ---------------- */
+let pendingPhotoBlob = null;
+function openPhotoSheet(){
+  toggleSpeed(false);
+  document.getElementById('photoCaption').value='';
+  document.getElementById('photoPreview').style.display='none';
+  document.getElementById('savePhotoBtn').disabled=true;
+  pendingPhotoBlob=null;
+  openOverlay('overlay-photo');
+}
+function handlePhotoFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  pendingPhotoBlob = file;
+  const preview = document.getElementById('photoPreview');
+  preview.src = URL.createObjectURL(file);
+  preview.style.display='block';
+  document.getElementById('savePhotoBtn').disabled=false;
+}
+async function savePhotoEntry(){
+  if(!pendingPhotoBlob) return;
+  const btn = document.getElementById('savePhotoBtn');
+  btn.disabled = true;
+  const title = document.getElementById('photoCaption').value.trim();
+  const id = uid();
+  const entry = {id, courseId:currentCourseId, type:'image', title, hasBlob:true, createdAt:Date.now()};
+  try{
+    const thumb = await makeThumb(pendingPhotoBlob, 480);
+    await setEntryBlob(id, pendingPhotoBlob, thumb);
+    await dbAdd('entries', entry);
+  }catch(err){
+    alert('No se pudo guardar la foto. Revisa el espacio disponible en el celular.');
+    btn.disabled = false;
+    return;
+  }
+  closeOverlay('overlay-photo');
+  await renderTimeline();
+  pushEntry(entry);
+}
+
+/* ---------------- speed dial / overlays ---------------- */
+function toggleSpeed(force){
+  const opts = document.getElementById('speedOptions');
+  const fab = document.getElementById('fabMain');
+  const open = force!==undefined ? force : !opts.classList.contains('open');
+  opts.classList.toggle('open', open);
+  fab.classList.toggle('open', open);
+}
+function openOverlay(id){ document.getElementById(id).classList.add('active'); }
+function closeOverlay(id){
+  document.getElementById(id).classList.remove('active');
+  if(id==='overlay-audio'){
+    if(mediaRecorder && mediaRecorder.state!=='inactive'){
+      document.getElementById('recBadge').style.display = 'flex';
+    } else {
+      /* red de seguridad: si quedó una grabación sin guardar, se guarda sola */
+      if(recordedBlob){ saveAudioEntry().then(()=> toast('💾 La grabación se guardó automáticamente.')); }
+      stopStream(); stopMediaSession();
+    }
+  }
+  if(id==='overlay-view'){
+    const a = document.getElementById('aplayerEl');
+    if(a){ a.pause(); a.removeAttribute('src'); a.load(); }
+    cancelAnimationFrame(aplayerRaf);
+  }
+}
+document.querySelectorAll('.overlay').forEach(o=>{
+  o.addEventListener('click', (e)=>{ if(e.target===o){ closeOverlay(o.id); } });
+});
+
+/* ---------------- helpers ---------------- */
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function formatDuration(sec){
+  let n = Number(sec);
+  if(!isFinite(n) || n < 0) n = 0;
+  n = Math.floor(n);
+  const h = Math.floor(n/3600), m = Math.floor((n%3600)/60), s = n%60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+    : `${m}:${String(s).padStart(2,'0')}`;
+}
+/* Los WebM de MediaRecorder no traen duración en su cabecera: hay que
+   forzar un seek gigante para que el navegador la calcule. */
+function measureBlobDuration(blob){
+  return new Promise(resolve=>{
+    if(!blob) return resolve(0);
+    const el = document.createElement('audio');
+    el.preload = 'metadata';
+    const url = URL.createObjectURL(blob);
+    let done = false;
+    const finish = v=>{
+      if(done) return; done = true;
+      try{ URL.revokeObjectURL(url); }catch(e){}
+      resolve(isFinite(v) && v > 0 ? Math.floor(v) : 0);
+    };
+    el.onloadedmetadata = ()=>{
+      if(el.duration === Infinity || isNaN(el.duration)){
+        el.ontimeupdate = ()=>{ el.ontimeupdate = null; finish(el.duration); };
+        el.currentTime = 1e101;
+      } else finish(el.duration);
+    };
+    el.onerror = ()=> finish(0);
+    el.src = url;
+    setTimeout(()=> finish(el.duration), 9000);
+  });
+}
+function formatTime(ts){ return new Date(ts).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}); }
+function formatShortDate(ts){ return new Date(ts).toLocaleDateString('es-PE',{day:'2-digit',month:'short'}).toUpperCase(); }
+function formatDayKey(ts){
+  const d = new Date(ts);
+  const today = new Date();
+  const yest = new Date(); yest.setDate(today.getDate()-1);
+  const sameDay = (a,b)=> a.toDateString()===b.toDateString();
+  if(sameDay(d,today)) return 'HOY';
+  if(sameDay(d,yest)) return 'AYER';
+  return d.toLocaleDateString('es-PE',{weekday:'long', day:'2-digit', month:'short'}).toUpperCase();
+}
+function formatFullDate(ts){ return new Date(ts).toLocaleDateString('es-PE',{weekday:'long', day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit'}); }
+
+/* ---------------- fullscreen image viewer (pinch zoom / pan / double-tap) ---------------- */
+let ivScale=1, ivTx=0, ivTy=0;
+let ivPointers = new Map();
+let ivStartDist=0, ivStartScale=1, ivStartMid={x:0,y:0}, ivStartTx=0, ivStartTy=0;
+let ivPanning=false, ivPanStart={x:0,y:0};
+let ivLastTapTime=0, ivLastTapPos={x:0,y:0};
+let ivVerticalDragStart=null;
+
+function openImageViewer(url){
+  const img = document.getElementById('imgViewerImg');
+  img.src = url;
+  ivScale=1; ivTx=0; ivTy=0;
+  applyImgTransform();
+  document.getElementById('imgViewer').classList.add('active');
+}
+async function saveCurrentImage(){
+  const btn = document.getElementById('imgViewerSave');
+  const url = document.getElementById('imgViewerImg').src;
+  if(!url) return;
+  try{
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    const filename = 'apuntes-u-' + Date.now() + '.jpg';
+    const file = new File([blob], filename, {type: blob.type || 'image/jpeg'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Foto de Apuntes U'});
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  }catch(err){
+    if(err && err.name==='AbortError') return; // user cancelled the share sheet
+    alert('No se pudo guardar la imagen.');
+  }
+}
+function closeImageViewer(){
+  document.getElementById('imgViewer').classList.remove('active');
+}
+function applyImgTransform(){
+  const img = document.getElementById('imgViewerImg');
+  if(img) img.style.transform = `translate(${ivTx}px, ${ivTy}px) scale(${ivScale})`;
+}
+function ivDist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+function ivMid(a,b){ return {x:(a.x+b.x)/2, y:(a.y+b.y)/2}; }
+function ivToggleZoom(){
+  if(ivScale>1.3){ ivScale=1; ivTx=0; ivTy=0; } else { ivScale=2.5; }
+  applyImgTransform();
+}
+function ivPointerDown(e){
+  e.preventDefault();
+  const stage = document.getElementById('imgViewerStage');
+  try{ stage.setPointerCapture(e.pointerId); }catch(err){}
+  ivPointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(ivPointers.size===1){
+    const p = [...ivPointers.values()][0];
+    ivPanning = true;
+    ivPanStart = {x:p.x, y:p.y};
+    ivStartTx = ivTx; ivStartTy = ivTy;
+    ivVerticalDragStart = ivScale<=1.02 ? p.y : null;
+    const now = Date.now();
+    if(now - ivLastTapTime < 320 && Math.hypot(p.x-ivLastTapPos.x, p.y-ivLastTapPos.y) < 30){
+      ivToggleZoom();
+      ivLastTapTime = 0;
+    } else {
+      ivLastTapTime = now; ivLastTapPos = {x:p.x, y:p.y};
+    }
+  } else if(ivPointers.size===2){
+    ivPanning = false;
+    const pts = [...ivPointers.values()];
+    ivStartDist = ivDist(pts[0], pts[1]);
+    ivStartScale = ivScale;
+    ivStartMid = ivMid(pts[0], pts[1]);
+    ivStartTx = ivTx; ivStartTy = ivTy;
+  }
+}
+function ivPointerMove(e){
+  if(!ivPointers.has(e.pointerId)) return;
+  ivPointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if(ivPointers.size===2){
+    const pts = [...ivPointers.values()];
+    const dist = ivDist(pts[0], pts[1]);
+    const mid = ivMid(pts[0], pts[1]);
+    ivScale = Math.min(4, Math.max(1, ivStartScale * (dist/ivStartDist)));
+    ivTx = ivStartTx + (mid.x - ivStartMid.x);
+    ivTy = ivStartTy + (mid.y - ivStartMid.y);
+    applyImgTransform();
+  } else if(ivPointers.size===1 && ivPanning){
+    const p = [...ivPointers.values()][0];
+    const dx = p.x - ivPanStart.x, dy = p.y - ivPanStart.y;
+    ivTx = ivStartTx + dx;
+    ivTy = ivStartTy + dy;
+    applyImgTransform();
+  }
+}
+function ivPointerUp(e){
+  const p = ivPointers.get(e.pointerId);
+  ivPointers.delete(e.pointerId);
+  if(ivPointers.size===0){
+    if(ivScale<=1.02 && ivVerticalDragStart!==null && p){
+      const dy = p.y - ivVerticalDragStart;
+      if(dy>90){ closeImageViewer(); }
+      else { ivTx=0; ivTy=0; applyImgTransform(); }
+    }
+    ivPanning = false;
+    ivVerticalDragStart = null;
+  }
+}
+(function initImageViewer(){
+  const stage = document.getElementById('imgViewerStage');
+  if(!stage) return;
+  stage.addEventListener('pointerdown', ivPointerDown);
+  stage.addEventListener('pointermove', ivPointerMove);
+  stage.addEventListener('pointerup', ivPointerUp);
+  stage.addEventListener('pointercancel', ivPointerUp);
+})();
+
+if('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')){
+  window.addEventListener('load', ()=> navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>

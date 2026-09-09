@@ -1,0 +1,11 @@
+{
+  "appId": "com.apuntesu.app",
+  "appName": "Apuntes U",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

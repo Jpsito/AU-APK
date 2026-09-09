@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+
+        <!-- Requerido por @capawesome-team/capacitor-android-foreground-service:
+             es lo que le pide a Android el permiso de "servicio en primer plano
+             de tipo micrófono", para que no corte la grabación con la pantalla
+             apagada. -->
+        <receiver android:name="io.capawesome.capacitorjs.plugins.foregroundservice.NotificationActionBroadcastReceiver" />
+        <service
+            android:name="io.capawesome.capacitorjs.plugins.foregroundservice.AndroidForegroundService"
+            android:foregroundServiceType="microphone" />
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Grabar audio (WebView getUserMedia lo necesita también a nivel Android) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Tomar fotos con la cámara del sistema desde el <input capture> -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Notificación fija mientras se graba (Android 13+ exige pedirlo en tiempo de uso) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Servicio en primer plano: esto es lo que evita que Android corte el
+         micrófono cuando se apaga la pantalla mientras se graba una clase -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- Mantener el procesador activo durante la grabación con la pantalla apagada -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+</manifest>
