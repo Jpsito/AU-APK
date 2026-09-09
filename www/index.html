@@ -1668,7 +1668,7 @@ function onAplayerMetadata(audioEl, e){
 }
 function fixInfiniteDuration(audioEl){
   return new Promise((resolve, reject)=>{
-    if(audioEl !== document.getElementById('aplayerEl')) return reject(new Error('stale'));
+    if(!audioEl || !audioEl.isConnected) return reject(new Error('stale'));
     const wasPaused = audioEl.paused;
     let settled = false;
     const finish = ok=>{
@@ -1690,6 +1690,17 @@ function fixInfiniteDuration(audioEl){
     try{ audioEl.currentTime = 1e101; }catch(err){}
     setTimeout(()=> finish(isFinite(audioEl.duration) && audioEl.duration > 0), 3000);
   });
+}
+/* Repara la duración "infinita" también en la vista previa que aparece justo
+   después de grabar (usa los controles nativos del navegador, que se rompen
+   igual que el reproductor propio con este tipo de archivo). */
+function preparePreviewPlayer(preview){
+  const tryFix = ()=>{
+    preview.removeEventListener('loadedmetadata', tryFix);
+    if(isFinite(preview.duration) && preview.duration > 0) return;   // ya está bien
+    fixInfiniteDuration(preview).catch(()=>{});   // mejor esfuerzo, sin bloquear la UI
+  };
+  preview.addEventListener('loadedmetadata', tryFix);
 }
 function applyRealDuration(audioEl, e){
   if(!isFinite(audioEl.duration) || audioEl.duration <= 0) return;
@@ -2555,6 +2566,7 @@ function onRecorderStop(){
     if(recPreviewUrl){ try{ URL.revokeObjectURL(recPreviewUrl); }catch(e){} }
     recPreviewUrl = URL.createObjectURL(blob);
     preview.src = recPreviewUrl; preview.style.display='block';
+    preparePreviewPlayer(preview);   // repara la duración "infinita" también en esta vista previa
     document.getElementById('saveAudioBtn').disabled=false;
     setRecStatus(recPart>1
       ? `Listo. Las partes anteriores ya se guardaron solas; guarda esta parte ${recPart}.`
