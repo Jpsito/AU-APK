@@ -196,6 +196,8 @@
     animation: rise .22s ease;
   }
   @keyframes rise{ from{ transform:translateY(24px); opacity:0;} to{transform:translateY(0); opacity:1;} }
+  @keyframes sink{ from{ transform:translateY(0); opacity:1;} to{transform:translateY(24px); opacity:0;} }
+  .sheet.closing{ animation: sink .2s ease forwards; }
   .sheet-handle{ width:38px; height:4px; background:var(--line); border-radius:4px; margin:0 auto 16px; }
   .sheet h2{ font-family:'Fraunces',serif; font-size:20px; margin:0 0 16px; color:var(--ink); }
   .field{ margin-bottom:14px; }
@@ -526,6 +528,22 @@
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="closeOverlay('overlay-text')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveTextEntry()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: renombrar foto o audio -->
+<div class="overlay" id="overlay-rename">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2 id="renameSheetTitle">Renombrar</h2>
+    <div class="field">
+      <label>Título</label>
+      <input type="text" id="renameTitle" placeholder="Ej. Pizarra clase 4" autofocus>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeOverlay('overlay-rename')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveRename()">Guardar</button>
     </div>
   </div>
 </div>
@@ -1612,7 +1630,9 @@ async function viewEntry(id){
   }
   inner += `<div class="btn-row" style="margin-top:18px;">
       <button class="btn btn-ghost" onclick="closeOverlay('overlay-view')">Cerrar</button>
-      ${e.type==='text' ? `<button class="btn btn-primary" onclick="editEntryFromView('${e.id}')">✎ Editar</button>` : ''}
+      ${e.type==='text'
+        ? `<button class="btn btn-primary" onclick="editEntryFromView('${e.id}')">✎ Editar</button>`
+        : `<button class="btn btn-primary" onclick="renameEntryFromView('${e.id}')">✎ Renombrar</button>`}
       <button class="btn btn-danger" onclick="deleteEntry('${e.id}')">Eliminar</button>
     </div>`;
   sheet.innerHTML = `<div class="sheet-handle"></div>` + inner;
@@ -1799,6 +1819,31 @@ async function editEntryFromView(id){
   if(!e) return;
   openEditTextSheet(e.id, e.title, e.text);
 }
+/* Renombrar fotos y audios: a diferencia de los apuntes, no tienen cuerpo
+   de texto, así que usan una hoja aparte con un solo campo. */
+let renamingEntryId = null;
+async function renameEntryFromView(id){
+  const e = await new Promise((res,rej)=>{ const r = tx('entries').get(id); r.onsuccess=()=>res(r.result); r.onerror=rej; });
+  if(!e) return;
+  renamingEntryId = id;
+  document.getElementById('renameSheetTitle').textContent = e.type==='image' ? 'Renombrar foto' : 'Renombrar audio';
+  document.getElementById('renameTitle').value = e.title || '';
+  openOverlay('overlay-rename');
+}
+async function saveRename(){
+  if(!renamingEntryId) return;
+  const title = document.getElementById('renameTitle').value.trim();
+  const entry = await new Promise((res,rej)=>{ const r = tx('entries').get(renamingEntryId); r.onsuccess=()=>res(r.result); r.onerror=rej; });
+  if(!entry) return;
+  entry.title = title;
+  await dbPut('entries', entry);
+  const id = renamingEntryId;
+  renamingEntryId = null;
+  closeOverlay('overlay-rename');
+  // si la ficha del elemento sigue abierta atrás, la volvemos a pintar con el nuevo título
+  if(document.getElementById('overlay-view').classList.contains('active')) viewEntry(id);
+  await renderTimeline();
+}
 function openTextSheet(){
   toggleSpeed(false);
   editingEntryId = null;
@@ -1957,25 +2002,35 @@ function releaseWakeLock(){
 }
 
 /* ---------------- detección de "hueco de silencio" tras un bloqueo -----
-   Mientras la pantalla está apagada, Android puede cortar la captura real
-   de audio sin avisarle a la página (no dispara onended ni onmute: el
-   MediaRecorder sigue creyendo que todo está bien). No hay forma de
-   detectarlo en el momento; lo que sí se puede hacer es notarlo apenas la
-   app vuelve a estar visible, comparando cuándo se guardó el último trozo
-   real contra el momento actual. Si el hueco es grande, se cierra esa
-   parte (ya se guardó sola, con lo que sí se alcanzó a grabar) y arranca
-   una parte nueva para el resto de la clase. */
+   En la PWA de navegador (sin servicio en primer plano), Android puede
+   cortar la captura real de audio sin avisarle a la página: no dispara
+   onended ni onmute, el MediaRecorder sigue creyendo que todo está bien.
+   Ahí no queda otra que partir la grabación y arrancar de nuevo al volver.
+
+   En la app nativa esto YA NO aplica de la misma forma: el servicio en
+   primer plano mantiene el micrófono genuinamente activo (lo confirma el
+   propio aviso del sistema), así que un hueco acá casi siempre es solo el
+   navegador demorando la entrega de los trozos mientras la pantalla
+   estaba apagada — no un corte real. Partir la grabación en ese caso solo
+   generaba partes de más sin necesidad. En su lugar, se fuerza un volcado
+   y se sigue grabando en la misma parte; si de verdad se perdió algo de
+   contenido, eso se nota y se avisa al guardar (ver resolveRealDuration),
+   comparando la duración real del archivo contra el tiempo transcurrido. */
 let lastChunkAt = 0;
 const SILENCE_GAP_MS = 12000;
 function checkRecordingGap(){
   if(!(mediaRecorder && mediaRecorder.state==='recording')) return;
   acquireWakeLock();
   const gapMs = Date.now() - lastChunkAt;
-  if(gapMs > SILENCE_GAP_MS){
-    const secs = Math.round(gapMs/1000);
-    const label = secs < 60 ? `${secs} s` : `${Math.round(secs/60)} min`;
-    handleMicLoss(`Se perdió el audio ~${label} mientras la pantalla estuvo bloqueada`);
+  if(gapMs <= SILENCE_GAP_MS) return;
+  if(isNativeApp()){
+    try{ mediaRecorder.requestData(); }catch(e){}
+    lastChunkAt = Date.now();
+    return;
   }
+  const secs = Math.round(gapMs/1000);
+  const label = secs < 60 ? `${secs} s` : `${Math.round(secs/60)} min`;
+  handleMicLoss(`Se perdió el audio ~${label} mientras la pantalla estuvo bloqueada`);
 }
 
 /* ---------------- selección de micrófono ---------------- */
@@ -2112,8 +2167,7 @@ async function recoverOrphanRecordings(){
       else { m.tries = tries; try{ await dbPut('recmeta', m); }catch(e){} }
       continue;
     }
-    let dur = Math.floor(m.seconds||0);
-    if(!dur) dur = await measureBlobDuration(blob);
+    const { duration: dur } = await resolveRealDuration(blob, m.seconds);
     const id = uid();
     const base = (m.title && m.title.length ? m.title : 'Grabación de clase');
     const entry = {
@@ -2304,13 +2358,14 @@ async function cancelAudioSheet(){
   await discardSession(sid);
   recSessionId = null; recordedBlob = null;
   document.getElementById('recBadge').style.display = 'none';
-  document.getElementById('overlay-audio').classList.remove('active');
+  hideOverlayAnimated('overlay-audio');
 }
 function minimizeRecording(){
-  document.getElementById('overlay-audio').classList.remove('active');
-  if(mediaRecorder && mediaRecorder.state!=='inactive'){
-    document.getElementById('recBadge').style.display = 'flex';
-  }
+  hideOverlayAnimated('overlay-audio', ()=>{
+    if(mediaRecorder && mediaRecorder.state!=='inactive'){
+      document.getElementById('recBadge').style.display = 'flex';
+    }
+  });
 }
 function reopenRecordingSheet(){
   document.getElementById('recBadge').style.display = 'none';
@@ -2417,8 +2472,8 @@ async function finalizeSessionToEntry(sessionId, seconds, marks, part, isAuto){
   if(!asm.rows){ await discardSession(sessionId); return null; }               // sesión vacía
   const blob = asm.blob;
   if(!blob || blob.size < 1200){ return null; }   // se conserva para reintentar al reabrir
-  let dur = Math.floor(seconds||0);
-  if(!dur || !isFinite(dur)) dur = await measureBlobDuration(blob);
+  const { duration: dur, mismatch, missingSeconds } = await resolveRealDuration(blob, seconds);
+  if(mismatch) warnDurationMismatch(missingSeconds);
   const titleEl = document.getElementById('audioTitle');
   const base = (titleEl && titleEl.value.trim()) || 'Grabación de clase';
   const id = uid();
@@ -2608,8 +2663,8 @@ async function saveAudioEntry(opts){
   const btn = document.getElementById('saveAudioBtn');
   btn.disabled = true;
   const title = document.getElementById('audioTitle').value.trim();
-  let dur = Math.floor(recordSeconds||0);
-  if(!dur || !isFinite(dur)) dur = await measureBlobDuration(recordedBlob);
+  const { duration: dur, mismatch, missingSeconds } = await resolveRealDuration(recordedBlob, recordSeconds);
+  if(mismatch) warnDurationMismatch(missingSeconds);
   const id = uid();
   const entry = {
     id, courseId: recCourseId || currentCourseId, type:'audio',
@@ -2693,22 +2748,43 @@ function toggleSpeed(force){
   fab.classList.toggle('open', open);
 }
 function openOverlay(id){ document.getElementById(id).classList.add('active'); }
+/* Cierra con una animación de "bajada", en vez de desaparecer de golpe.
+   El trabajo real (guardar, limpiar, etc.) se ejecuta una vez que termina
+   la animación, para no adelantar nada visualmente raro. */
+const SHEET_CLOSE_MS = 200;
+function hideOverlayAnimated(id, afterHide){
+  const ov = document.getElementById(id);
+  const sheet = ov ? ov.querySelector('.sheet') : null;
+  if(!ov){ if(afterHide) afterHide(); return; }
+  if(!sheet || sheet.classList.contains('closing')){
+    ov.classList.remove('active');
+    if(afterHide) afterHide();
+    return;
+  }
+  sheet.classList.add('closing');
+  setTimeout(()=>{
+    ov.classList.remove('active');
+    sheet.classList.remove('closing');
+    if(afterHide) afterHide();
+  }, SHEET_CLOSE_MS);
+}
 function closeOverlay(id){
-  document.getElementById(id).classList.remove('active');
-  if(id==='overlay-audio'){
-    if(mediaRecorder && mediaRecorder.state!=='inactive'){
-      document.getElementById('recBadge').style.display = 'flex';
-    } else {
-      /* red de seguridad: si quedó una grabación sin guardar, se guarda sola */
-      if(recordedBlob){ saveAudioEntry().then(()=> toast('💾 La grabación se guardó automáticamente.')); }
-      stopStream(); stopMediaSession();
+  hideOverlayAnimated(id, ()=>{
+    if(id==='overlay-audio'){
+      if(mediaRecorder && mediaRecorder.state!=='inactive'){
+        document.getElementById('recBadge').style.display = 'flex';
+      } else {
+        /* red de seguridad: si quedó una grabación sin guardar, se guarda sola */
+        if(recordedBlob){ saveAudioEntry().then(()=> toast('💾 La grabación se guardó automáticamente.')); }
+        stopStream(); stopMediaSession();
+      }
     }
-  }
-  if(id==='overlay-view'){
-    const a = document.getElementById('aplayerEl');
-    if(a){ a.pause(); a.removeAttribute('src'); a.load(); }
-    cancelAnimationFrame(aplayerRaf);
-  }
+    if(id==='overlay-view'){
+      const a = document.getElementById('aplayerEl');
+      if(a){ a.pause(); a.removeAttribute('src'); a.load(); }
+      cancelAnimationFrame(aplayerRaf);
+    }
+  });
 }
 document.querySelectorAll('.overlay').forEach(o=>{
   o.addEventListener('click', (e)=>{ if(e.target===o){ closeOverlay(o.id); } });
@@ -2749,6 +2825,25 @@ function measureBlobDuration(blob){
     el.src = url;
     setTimeout(()=> finish(el.duration), 9000);
   });
+}
+/* La duración "de verdad" es la del archivo, no el cronómetro en pantalla:
+   el cronómetro cuenta tiempo transcurrido aunque, por throttling del
+   navegador en segundo plano, no se haya capturado audio real durante un
+   tramo. Medimos siempre el archivo y avisamos si hay una diferencia real,
+   en vez de guardar un número que después no coincide con lo que se puede
+   escuchar. */
+async function resolveRealDuration(blob, elapsedSeconds){
+  const elapsed = Math.floor(elapsedSeconds || 0);
+  const measured = await measureBlobDuration(blob);
+  if(!measured) return { duration: elapsed, mismatch: false };
+  const missing = elapsed - measured;
+  const mismatch = elapsed > 0 && missing > Math.max(15, elapsed * 0.15);
+  return { duration: measured, mismatch, missingSeconds: missing };
+}
+function warnDurationMismatch(missingSeconds){
+  const secs = Math.round(missingSeconds);
+  const label = secs < 60 ? `${secs} s` : `${Math.round(secs/60)} min`;
+  toast(`⚠️ Se guardaron ~${label} menos de audio de lo esperado (posible corte durante segundo plano prolongado).`, 8000);
 }
 function formatTime(ts){ return new Date(ts).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}); }
 function formatShortDate(ts){ return new Date(ts).toLocaleDateString('es-PE',{day:'2-digit',month:'short'}).toUpperCase(); }
