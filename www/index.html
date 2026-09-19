@@ -1633,6 +1633,7 @@ async function viewEntry(id){
       ${e.type==='text'
         ? `<button class="btn btn-primary" onclick="editEntryFromView('${e.id}')">✎ Editar</button>`
         : `<button class="btn btn-primary" onclick="renameEntryFromView('${e.id}')">✎ Renombrar</button>`}
+      ${e.type==='audio' ? `<button class="btn btn-ghost" onclick="shareAudioEntry('${e.id}')">📤 Compartir</button>` : ''}
       <button class="btn btn-danger" onclick="deleteEntry('${e.id}')">Eliminar</button>
     </div>`;
   sheet.innerHTML = `<div class="sheet-handle"></div>` + inner;
@@ -1830,6 +1831,16 @@ async function renameEntryFromView(id){
   document.getElementById('renameTitle').value = e.title || '';
   openOverlay('overlay-rename');
 }
+/* Compartir/guardar el archivo de un audio, desde su ficha de detalle. */
+async function shareAudioEntry(id){
+  const e = await new Promise((res,rej)=>{ const r = tx('entries').get(id); r.onsuccess=()=>res(r.result); r.onerror=rej; });
+  if(!e) return;
+  const blob = await getEntryBlob(e);
+  if(!blob){ alert('No se pudo obtener el audio.'); return; }
+  const ext = (blob.type && blob.type.includes('mp4')) ? 'm4a' : 'webm';
+  const filename = (e.title ? e.title.replace(/[\\/:*?"<>|]+/g,' ').trim() : 'audio') + '.' + ext;
+  await shareOrSaveBlob(blob, filename, {title: e.title || 'Audio de Apuntes U'});
+}
 async function saveRename(){
   if(!renamingEntryId) return;
   const title = document.getElementById('renameTitle').value.trim();
@@ -1933,6 +1944,70 @@ document.addEventListener('visibilitychange', ()=>{
    garantizar esto). */
 function isNativeApp(){
   return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+}
+
+/* ---------------- compartir / guardar archivos ----------------
+   En el navegador (PWA), "compartir" una foto o un audio usa las APIs web
+   (navigator.share con archivos, o si no existe, un link de descarga).
+   Dentro de la app nativa esas APIs no sirven de nada: el WebView empaquetado
+   no tiene la infraestructura de descargas de un navegador de verdad, así
+   que el link de descarga no hace nada visible, y navigator.share puede
+   no estar disponible para archivos. La forma correcta ahí es escribir el
+   archivo en la caché de la app (con el plugin Filesystem) y abrir la
+   bandeja nativa de compartir de Android sobre ese archivo (con el plugin
+   Share) — desde esa bandeja el usuario puede guardarlo en Archivos, Drive,
+   mandarlo por WhatsApp, etc. */
+function blobToBase64(blob){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onloadend = ()=>{
+      const result = reader.result || '';
+      const idx = result.indexOf(',');
+      resolve(idx >= 0 ? result.slice(idx+1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+async function shareOrSaveBlob(blob, filename, opts){
+  opts = opts || {};
+  if(isNativeApp()){
+    const FS = window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+    const ShareApi = window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+    if(!FS || !ShareApi){ alert('No se pudo compartir: falta un componente de la app.'); return; }
+    try{
+      const base64 = await blobToBase64(blob);
+      const { uri } = await FS.writeFile({
+        path: 'compartidos/' + filename,
+        data: base64,
+        directory: 'CACHE',
+        recursive: true
+      });
+      await ShareApi.share({ title: opts.title || filename, url: uri, dialogTitle: opts.dialogTitle || 'Compartir' });
+    }catch(err){
+      if(err && /cancel/i.test(err.message||'')) return;   // el usuario cerró la bandeja de compartir, no es un error
+      console.warn('no se pudo compartir el archivo', err);
+      alert('No se pudo compartir el archivo.');
+    }
+    return;
+  }
+  // navegador (PWA): comportamiento de siempre
+  try{
+    const file = new File([blob], filename, {type: blob.type || 'application/octet-stream'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title: opts.title || filename});
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  }catch(err){
+    if(err && err.name==='AbortError') return;   // el usuario cerró la bandeja de compartir
+    alert('No se pudo guardar el archivo.');
+  }
 }
 function nativeForegroundService(){
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.ForegroundService) || null;
@@ -2874,26 +2949,14 @@ function openImageViewer(url){
   document.getElementById('imgViewer').classList.add('active');
 }
 async function saveCurrentImage(){
-  const btn = document.getElementById('imgViewerSave');
   const url = document.getElementById('imgViewerImg').src;
   if(!url) return;
   try{
     const resp = await fetch(url);
     const blob = await resp.blob();
     const filename = 'apuntes-u-' + Date.now() + '.jpg';
-    const file = new File([blob], filename, {type: blob.type || 'image/jpeg'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:'Foto de Apuntes U'});
-    } else {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
+    await shareOrSaveBlob(blob, filename, {title:'Foto de Apuntes U'});
   }catch(err){
-    if(err && err.name==='AbortError') return; // user cancelled the share sheet
     alert('No se pudo guardar la imagen.');
   }
 }
